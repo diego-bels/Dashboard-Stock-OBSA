@@ -2,6 +2,9 @@
 data.json
 Dashboard.html
 
+# La carpeta docs/ SÍ va al repo (es el deploy de GitHub Pages)
+!docs/
+
 # Archivos de Excel fuente (pueden ser pesados y contienen datos internos)
 *.xlsx
 
