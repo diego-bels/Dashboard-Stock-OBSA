@@ -1,18 +1,21 @@
 @echo off
-chcp 65001 >nul
-title Actualizando Dashboard Stock LED...
+title Actualizando Dashboard - Stock U.Unidad...
 
 echo.
 echo  ================================================
-echo   DASHBOARD STOCK LED — Actualización de datos
+echo   STOCK U.UNIDAD - Actualizacion de datos
 echo  ================================================
 echo.
 
-:: Verificar que existe el archivo Excel
-if not exist "%~dp0Stock LED.xlsx" (
-    echo  ERROR: No se encontró "Stock LED.xlsx" en esta carpeta.
+:: Verificar que existe al menos un archivo Stock Total*.xlsx
+set FOUND=0
+for %%f in ("%~dp0Stock Total*.xlsx") do set FOUND=1
+
+if %FOUND%==0 (
+    echo  ERROR: No se encontro el archivo de stock en esta carpeta.
     echo.
-    echo  Copiá el archivo actualizado de stock aquí antes de continuar.
+    echo  Copia el archivo exportado del sistema a esta carpeta.
+    echo  El nombre debe empezar con "Stock Total" (ej: Stock Total 2206.xlsx)
     echo.
     pause
     exit /b 1
@@ -22,7 +25,7 @@ echo  Paso 1/2: Extrayendo datos del Excel...
 python "%~dp01_extraer_datos.py"
 if errorlevel 1 (
     echo.
-    echo  ERROR en la extracción de datos.
+    echo  ERROR en la extraccion de datos.
     pause
     exit /b 1
 )
@@ -42,7 +45,7 @@ echo  ================================================
 echo   Dashboard actualizado correctamente!
 echo  ================================================
 echo.
-echo  Abriendo Dashboard.html en el navegador...
+echo  Abriendo Dashboard en el navegador...
 start "" "%~dp0Dashboard.html"
 
 timeout /t 2 >nul
