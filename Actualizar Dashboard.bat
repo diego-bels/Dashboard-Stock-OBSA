@@ -7,20 +7,6 @@ echo   STOCK U.UNIDAD - Actualizacion de datos
 echo  ================================================
 echo.
 
-:: Verificar que existe al menos un archivo Stock Total*.xlsx
-set FOUND=0
-for %%f in ("%~dp0Stock Total*.xlsx") do set FOUND=1
-
-if %FOUND%==0 (
-    echo  ERROR: No se encontro el archivo de stock en esta carpeta.
-    echo.
-    echo  Copia el archivo exportado del sistema a esta carpeta.
-    echo  El nombre debe empezar con "Stock Total" (ej: Stock Total 2206.xlsx)
-    echo.
-    pause
-    exit /b 1
-)
-
 echo  Paso 1/2: Extrayendo datos del Excel...
 python "%~dp01_extraer_datos.py"
 if errorlevel 1 (
