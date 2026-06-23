@@ -1,0 +1,15 @@
+# Datos generados automáticamente (no van al repo — cada uno los genera localmente)
+data.json
+Dashboard.html
+
+# Archivos de Excel fuente (pueden ser pesados y contienen datos internos)
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Sistema
+.DS_Store
+Thumbs.db
