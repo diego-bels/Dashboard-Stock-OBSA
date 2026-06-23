@@ -160,18 +160,18 @@ HTML = r"""<!DOCTYPE html>
     </div>
 
     <div class="filter-section">
-      <div class="filter-label">Rubro</div>
-      <div class="ac-wrap">
-        <input class="search-box" id="rubroInput" type="text" placeholder="Buscar rubro…" oninput="acUpdate('rubro')" onfocus="acUpdate('rubro')" onkeydown="acKey(event,'rubro')" autocomplete="off">
-        <div class="ac-dropdown" id="rubroDropdown"></div>
-      </div>
-    </div>
-
-    <div class="filter-section">
       <div class="filter-label">Familia</div>
       <div class="ac-wrap">
         <input class="search-box" id="familiaInput" type="text" placeholder="Buscar familia…" oninput="acUpdate('familia')" onfocus="acUpdate('familia')" onkeydown="acKey(event,'familia')" autocomplete="off">
         <div class="ac-dropdown" id="familiaDropdown"></div>
+      </div>
+    </div>
+
+    <div class="filter-section">
+      <div class="filter-label">Rubro</div>
+      <div class="ac-wrap">
+        <input class="search-box" id="rubroInput" type="text" placeholder="Buscar rubro…" oninput="acUpdate('rubro')" onfocus="acUpdate('rubro')" onkeydown="acKey(event,'rubro')" autocomplete="off">
+        <div class="ac-dropdown" id="rubroDropdown"></div>
       </div>
     </div>
 
@@ -319,6 +319,14 @@ function toggleAllBranches() {
 }
 
 // ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
+// Mapa familia → rubros para filtrado en cascada
+const FAMILIA_RUBROS = {};
+PRODUCTS.forEach(p => {
+  if (!p.familia || !p.rubro) return;
+  if (!FAMILIA_RUBROS[p.familia]) FAMILIA_RUBROS[p.familia] = new Set();
+  FAMILIA_RUBROS[p.familia].add(p.rubro);
+});
+
 const AC_FIELDS = {
   rubro:   { inputId:'rubroInput',   dropId:'rubroDropdown',   values: [...new Set(PRODUCTS.map(p=>p.rubro).filter(Boolean))].sort() },
   familia: { inputId:'familiaInput', dropId:'familiaDropdown', values: [...new Set(PRODUCTS.map(p=>p.familia).filter(Boolean))].sort() },
@@ -333,12 +341,21 @@ function acHighlight(q, text) {
   return text.slice(0,i) + '<em>' + text.slice(i, i+q.length) + '</em>' + text.slice(i+q.length);
 }
 
+function acGetRubroValues() {
+  const familiaVal = document.getElementById('familiaInput').value.trim();
+  if (familiaVal && FAMILIA_RUBROS[familiaVal]) {
+    return [...FAMILIA_RUBROS[familiaVal]].sort();
+  }
+  return AC_FIELDS.rubro.values;
+}
+
 function acUpdate(field) {
   const f = AC_FIELDS[field];
   const input = document.getElementById(f.inputId);
   const drop  = document.getElementById(f.dropId);
   const q = input.value.trim();
-  const matches = q ? f.values.filter(v => v.toLowerCase().includes(q.toLowerCase())) : f.values;
+  const pool = field === 'rubro' ? acGetRubroValues() : f.values;
+  const matches = q ? pool.filter(v => v.toLowerCase().includes(q.toLowerCase())) : pool;
   acActiveIdx[field] = -1;
   if (!matches.length) { drop.classList.remove('open'); applyFilters(); return; }
   drop.innerHTML = matches.slice(0,50).map((v,i) =>
@@ -354,6 +371,13 @@ function acSelect(field, value) {
   const f = AC_FIELDS[field];
   document.getElementById(f.inputId).value = value;
   document.getElementById(f.dropId).classList.remove('open');
+  // Al cambiar familia, limpiar rubro si ya no pertenece a esa familia
+  if (field === 'familia') {
+    const rubroVal = document.getElementById('rubroInput').value.trim();
+    if (rubroVal && FAMILIA_RUBROS[value] && !FAMILIA_RUBROS[value].has(rubroVal)) {
+      document.getElementById('rubroInput').value = '';
+    }
+  }
   applyFilters();
 }
 
