@@ -34,6 +34,12 @@ COL_KEY = 'D12'
 # Sucursales comerciales (las que aparecen en el dashboard - excluye COL)
 SUCURSALES = [v for k, v in DEPOSITOS.items() if k != COL_KEY]
 
+# Familias excluidas del análisis
+FAMILIAS_EXCLUIDAS = {
+    'INDUMENTARIA', 'CALZADO', 'JUGUETERIA', 'INSUMOS',
+    'FOTOGRAFIA', 'FLETES - PROMO REG.', 'BLANCO', 'BAZAR',
+}
+
 # Rubros excluidos del análisis (indumentaria, calzado, internos/seguros)
 RUBROS_EXCLUIDOS = {
     # Indumentaria
@@ -136,6 +142,10 @@ for _, row in df.iterrows():
     if rubro in RUBROS_EXCLUIDOS:
         continue
 
+    familia = clean_text(safe_str(row.get('Familia', '')))
+    if familia in FAMILIAS_EXCLUIDAS:
+        continue
+
     col_stock = safe_int(row.get(COL_KEY, 0))
     if col_stock != 0:
         continue  # solo productos sin reposición posible
@@ -152,7 +162,6 @@ for _, row in df.iterrows():
     size = (size_match.group(1) + '"') if size_match else 'N/A'
 
     marca = clean_text(safe_str(row.get('Marca', '')))
-    familia = clean_text(safe_str(row.get('Familia', '')))
 
     try:
         codigo = str(int(float(row[cod_col]))).zfill(6)

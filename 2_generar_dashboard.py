@@ -51,6 +51,12 @@ HTML = r"""<!DOCTYPE html>
   .filter-label{font-size:10px;font-weight:bold;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
   .search-box{width:100%;border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;color:var(--text)}
   .search-box:focus{outline:none;border-color:var(--blue)}
+  .ac-wrap{position:relative}
+  .ac-dropdown{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--blue);border-top:none;border-radius:0 0 5px 5px;max-height:160px;overflow-y:auto;z-index:999;display:none;box-shadow:0 4px 8px rgba(0,0,0,.1)}
+  .ac-dropdown.open{display:block}
+  .ac-item{padding:5px 8px;font-size:12px;cursor:pointer;color:var(--text)}
+  .ac-item:hover,.ac-item.active{background:var(--blue);color:#fff}
+  .ac-item em{font-style:normal;font-weight:700}
   .cb-list{display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto}
   .cb-item{display:flex;align-items:center;gap:5px;padding:2px 0}
   .cb-item input{accent-color:var(--blue);cursor:pointer;flex-shrink:0}
@@ -155,17 +161,26 @@ HTML = r"""<!DOCTYPE html>
 
     <div class="filter-section">
       <div class="filter-label">Rubro</div>
-      <input class="search-box" id="rubroInput" type="text" placeholder="Buscar rubro…" oninput="applyFilters()">
+      <div class="ac-wrap">
+        <input class="search-box" id="rubroInput" type="text" placeholder="Buscar rubro…" oninput="acUpdate('rubro')" onfocus="acUpdate('rubro')" onkeydown="acKey(event,'rubro')" autocomplete="off">
+        <div class="ac-dropdown" id="rubroDropdown"></div>
+      </div>
     </div>
 
     <div class="filter-section">
       <div class="filter-label">Familia</div>
-      <input class="search-box" id="familiaInput" type="text" placeholder="Buscar familia…" oninput="applyFilters()">
+      <div class="ac-wrap">
+        <input class="search-box" id="familiaInput" type="text" placeholder="Buscar familia…" oninput="acUpdate('familia')" onfocus="acUpdate('familia')" onkeydown="acKey(event,'familia')" autocomplete="off">
+        <div class="ac-dropdown" id="familiaDropdown"></div>
+      </div>
     </div>
 
     <div class="filter-section">
       <div class="filter-label">Marca</div>
-      <input class="search-box" id="marcaInput" type="text" placeholder="Buscar marca…" oninput="applyFilters()">
+      <div class="ac-wrap">
+        <input class="search-box" id="marcaInput" type="text" placeholder="Buscar marca…" oninput="acUpdate('marca')" onfocus="acUpdate('marca')" onkeydown="acKey(event,'marca')" autocomplete="off">
+        <div class="ac-dropdown" id="marcaDropdown"></div>
+      </div>
     </div>
 
     <div class="divider"></div>
@@ -302,6 +317,80 @@ function toggleAllBranches() {
   }
   updateSelTodoLbl(); applyFilters();
 }
+
+// ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
+const AC_FIELDS = {
+  rubro:   { inputId:'rubroInput',   dropId:'rubroDropdown',   values: [...new Set(PRODUCTS.map(p=>p.rubro).filter(Boolean))].sort() },
+  familia: { inputId:'familiaInput', dropId:'familiaDropdown', values: [...new Set(PRODUCTS.map(p=>p.familia).filter(Boolean))].sort() },
+  marca:   { inputId:'marcaInput',   dropId:'marcaDropdown',   values: [...new Set(PRODUCTS.map(p=>p.marca).filter(Boolean))].sort() },
+};
+let acActiveIdx = {};
+
+function acHighlight(q, text) {
+  if (!q) return text;
+  const i = text.toLowerCase().indexOf(q.toLowerCase());
+  if (i < 0) return text;
+  return text.slice(0,i) + '<em>' + text.slice(i, i+q.length) + '</em>' + text.slice(i+q.length);
+}
+
+function acUpdate(field) {
+  const f = AC_FIELDS[field];
+  const input = document.getElementById(f.inputId);
+  const drop  = document.getElementById(f.dropId);
+  const q = input.value.trim();
+  const matches = q ? f.values.filter(v => v.toLowerCase().includes(q.toLowerCase())) : f.values;
+  acActiveIdx[field] = -1;
+  if (!matches.length) { drop.classList.remove('open'); applyFilters(); return; }
+  drop.innerHTML = matches.slice(0,50).map((v,i) =>
+    `<div class="ac-item" data-val="${v.replace(/"/g,'&quot;')}" onmousedown="acSelect('${field}','${v.replace(/'/g,"\\'")}')">
+      ${acHighlight(q, v)}
+    </div>`
+  ).join('');
+  drop.classList.add('open');
+  applyFilters();
+}
+
+function acSelect(field, value) {
+  const f = AC_FIELDS[field];
+  document.getElementById(f.inputId).value = value;
+  document.getElementById(f.dropId).classList.remove('open');
+  applyFilters();
+}
+
+function acClose(field) {
+  document.getElementById(AC_FIELDS[field].dropId).classList.remove('open');
+}
+
+function acKey(e, field) {
+  const drop = document.getElementById(AC_FIELDS[field].dropId);
+  const items = drop.querySelectorAll('.ac-item');
+  if (!items.length) return;
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    acActiveIdx[field] = Math.min((acActiveIdx[field]||0)+1, items.length-1);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    acActiveIdx[field] = Math.max((acActiveIdx[field]||0)-1, 0);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const idx = acActiveIdx[field];
+    if (idx >= 0 && items[idx]) { acSelect(field, items[idx].dataset.val); return; }
+    drop.classList.remove('open'); applyFilters(); return;
+  } else if (e.key === 'Escape') {
+    drop.classList.remove('open'); return;
+  } else { return; }
+  items.forEach((it,i) => it.classList.toggle('active', i === acActiveIdx[field]));
+  if (items[acActiveIdx[field]]) items[acActiveIdx[field]].scrollIntoView({block:'nearest'});
+}
+
+document.addEventListener('click', e => {
+  ['rubro','familia','marca'].forEach(field => {
+    if (!document.getElementById(AC_FIELDS[field].inputId).contains(e.target) &&
+        !document.getElementById(AC_FIELDS[field].dropId).contains(e.target)) {
+      acClose(field);
+    }
+  });
+});
 
 // ── FILTER ────────────────────────────────────────────────────────────────────
 function getFilteredProducts() {
@@ -461,6 +550,7 @@ function exportExcel() {
 // ── RESET ─────────────────────────────────────────────────────────────────────
 function resetFilters() {
   ['searchInput','rubroInput','familiaInput','marcaInput'].forEach(id => document.getElementById(id).value = '');
+  ['rubro','familia','marca'].forEach(acClose);
   selectedBranches = new Set(ALL_BRANCHES);
   document.getElementById('toggleLastUnit').checked = true;
   document.getElementById('toggleColZero').checked  = true;
