@@ -11,12 +11,10 @@ BASE = Path(__file__).parent
 DEPOSITOS = {
     'D01': '25 de Mayo',
     'D02': 'Tafi del Valle',
-    'D03': 'Post Venta',
     'D04': 'Banda',
     'D05': 'Maipú',
     'D06': 'Concepción',
     'D07': 'Lules',
-    'D08': 'YB Web',
     'D09': 'Outlet',
     'D10': 'Rosario',
     'D11': 'Cafayate',
@@ -28,9 +26,6 @@ DEPOSITOS = {
     'D18': 'Santa María',
     'D23': 'Big',
     'D24': 'Aguilares',
-    'D25': 'PV Web',
-    'D26': 'PV Muebles',
-    'D30': 'Almacén Bs.As.',
     'D34': 'Alberdi',
 }
 
