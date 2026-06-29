@@ -280,11 +280,12 @@ let sortCol = null, sortDir = 1, currentView = 'table';
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function initFilters() { buildBranchList(); }
 
-function buildBranchList() {
+function buildBranchList(filteredProds) {
   const el = document.getElementById('branchList');
   el.innerHTML = '';
+  const prods = filteredProds || PRODUCTS;
   const counts = {};
-  PRODUCTS.forEach(p => ALL_BRANCHES.forEach(b => {
+  prods.forEach(p => ALL_BRANCHES.forEach(b => {
     if ((p.branch_stocks[b]||0) === 1) counts[b] = (counts[b]||0) + 1;
   }));
   ALL_BRANCHES.forEach(branch => {
@@ -319,6 +320,9 @@ function toggleAllBranches() {
 }
 
 // ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
+// Selecciones exactas (via autocomplete click) vs. texto libre
+const acExact = { rubro: false, familia: false, marca: false };
+
 // Mapa familia → rubros para filtrado en cascada
 const FAMILIA_RUBROS = {};
 PRODUCTS.forEach(p => {
@@ -364,6 +368,7 @@ function acUpdate(field) {
     </div>`
   ).join('');
   drop.classList.add('open');
+  acExact[field] = false;  // escritura libre → no es exact
   applyFilters();
 }
 
@@ -371,6 +376,7 @@ function acSelect(field, value) {
   const f = AC_FIELDS[field];
   document.getElementById(f.inputId).value = value;
   document.getElementById(f.dropId).classList.remove('open');
+  acExact[field] = true;  // selección desde dropdown → exact match
   // Al cambiar familia, limpiar rubro si ya no pertenece a esa familia
   if (field === 'familia') {
     const rubroVal = document.getElementById('rubroInput').value.trim();
@@ -427,9 +433,9 @@ function getFilteredProducts() {
 
   return PRODUCTS.filter(p => {
     if (search  && !p.codigo.toLowerCase().includes(search)  && !p.articulo.toLowerCase().includes(search))  return false;
-    if (rubro   && !p.rubro.toLowerCase().includes(rubro))   return false;
-    if (familia && !p.familia.toLowerCase().includes(familia)) return false;
-    if (marca   && !p.marca.toLowerCase().includes(marca))   return false;
+    if (rubro)   { const rv = p.rubro.toLowerCase();   if (acExact.rubro   ? rv !== rubro   : !rv.includes(rubro))   return false; }
+    if (familia) { const fv = p.familia.toLowerCase(); if (acExact.familia ? fv !== familia : !fv.includes(familia)) return false; }
+    if (marca)   { const mv = p.marca.toLowerCase();   if (acExact.marca   ? mv !== marca   : !mv.includes(marca))   return false; }
     if (onlyCol  && p.col_stock !== 0) return false;
     if (onlyLast && ![...selectedBranches].some(b => (p.branch_stocks[b]||0) === 1)) return false;
     return true;
@@ -439,6 +445,7 @@ function getFilteredProducts() {
 function applyFilters() {
   const prods = getFilteredProducts();
   updateKPIs(prods);
+  buildBranchList(prods);
   if (currentView === 'table') renderTable(prods);
   else renderSummary(prods);
 }
