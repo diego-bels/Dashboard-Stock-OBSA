@@ -195,17 +195,6 @@ HTML = r"""<!DOCTYPE html>
 
     <div class="divider"></div>
 
-    <div class="filter-section">
-      <div class="filter-label">Mostrar solo</div>
-      <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" id="toggleLastUnit" onchange="applyFilters()" checked><span class="slider"></span></label>
-        <span class="toggle-label">Última unidad (stock = 1)</span>
-      </div>
-      <div class="toggle-row">
-        <label class="toggle"><input type="checkbox" id="toggleColZero" onchange="applyFilters()" checked><span class="slider"></span></label>
-        <span class="toggle-label">COL = 0 (sin reposición)</span>
-      </div>
-    </div>
 
     <button class="reset-btn" onclick="resetFilters()">↺ Limpiar todos los filtros</button>
   </div>
@@ -428,16 +417,12 @@ function getFilteredProducts() {
   const rubro   = document.getElementById('rubroInput').value.toLowerCase().trim();
   const familia = document.getElementById('familiaInput').value.toLowerCase().trim();
   const marca   = document.getElementById('marcaInput').value.toLowerCase().trim();
-  const onlyLast = document.getElementById('toggleLastUnit').checked;
-  const onlyCol  = document.getElementById('toggleColZero').checked;
 
   return PRODUCTS.filter(p => {
     if (search  && !p.codigo.toLowerCase().includes(search)  && !p.articulo.toLowerCase().includes(search))  return false;
     if (rubro)   { const rv = p.rubro.toLowerCase();   if (acExact.rubro   ? rv !== rubro   : !rv.includes(rubro))   return false; }
     if (familia) { const fv = p.familia.toLowerCase(); if (acExact.familia ? fv !== familia : !fv.includes(familia)) return false; }
     if (marca)   { const mv = p.marca.toLowerCase();   if (acExact.marca   ? mv !== marca   : !mv.includes(marca))   return false; }
-    if (onlyCol  && p.col_stock !== 0) return false;
-    if (onlyLast && ![...selectedBranches].some(b => (p.branch_stocks[b]||0) === 1)) return false;
     return true;
   });
 }
@@ -583,8 +568,6 @@ function resetFilters() {
   ['searchInput','rubroInput','familiaInput','marcaInput'].forEach(id => document.getElementById(id).value = '');
   ['rubro','familia','marca'].forEach(acClose);
   selectedBranches = new Set(ALL_BRANCHES);
-  document.getElementById('toggleLastUnit').checked = true;
-  document.getElementById('toggleColZero').checked  = true;
   sortCol = null; sortDir = 1;
   buildBranchList(); applyFilters();
 }
