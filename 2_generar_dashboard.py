@@ -470,13 +470,12 @@ function renderVentas() {
       '<div class="no-results"><div class="icon">📭</div><div>Sin ventas detectadas para los filtros aplicados.</div></div>';
     return;
   }
-  const cols = ['Fecha','Hora','Sucursal','Código','Artículo','Rubro','Familia','Marca'];
+  const cols = ['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca'];
   document.getElementById('ventasTable').innerHTML = `
     <table style="border-collapse:collapse;width:100%;font-size:11px">
       <thead><tr>${cols.map(c=>`<th style="background:var(--navy);color:#fff;padding:6px 8px;text-align:left;white-space:nowrap">${c}</th>`).join('')}</tr></thead>
       <tbody>${ventas.map((v,i)=>`<tr style="${i%2?'background:#F2F7FF':''}">
         <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.fecha}</td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.hora}</td>
         <td style="padding:4px 8px;border-bottom:1px solid var(--border);font-weight:bold">${v.sucursal}</td>
         <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.codigo}</td>
         <td style="padding:4px 8px;border-bottom:1px solid var(--border);max-width:260px">${v.articulo}</td>
@@ -499,8 +498,8 @@ function exportVentas() {
   const ventas = getVentasFiltradas();
   if (!ventas.length) { alert('Sin datos para exportar.'); return; }
   const wb = XLSX.utils.book_new();
-  const rows = [['Fecha','Hora','Sucursal','Código','Artículo','Rubro','Familia','Marca']];
-  ventas.forEach(v => rows.push([v.fecha,v.hora,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca]));
+  const rows = [['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca']];
+  ventas.forEach(v => rows.push([v.fecha,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca]));
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [{wch:12},{wch:8},{wch:14},{wch:10},{wch:50},{wch:18},{wch:16},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, 'Ventas Última Unidad');
@@ -706,8 +705,12 @@ function getFilteredProducts() {
     if (rubro)   { const rv = p.rubro.toLowerCase();   if (acExact.rubro   ? rv !== rubro   : !rv.includes(rubro))   return false; }
     if (familia) { const fv = p.familia.toLowerCase(); if (acExact.familia ? fv !== familia : !fv.includes(familia)) return false; }
     if (marca)   { const mv = p.marca.toLowerCase();   if (acExact.marca   ? mv !== marca   : !mv.includes(marca))   return false; }
-    // Si está logueado como sucursal, solo mostrar productos con stock > 0 en esa sucursal
-    if (currentSucursal && (p.branch_stocks[currentSucursal] || 0) === 0) return false;
+    // Solo mostrar productos con stock > 0 en al menos una sucursal seleccionada
+    if (currentSucursal) {
+      if ((p.branch_stocks[currentSucursal] || 0) === 0) return false;
+    } else {
+      if (![...selectedBranches].some(b => (p.branch_stocks[b] || 0) > 0)) return false;
+    }
     return true;
   });
 }
