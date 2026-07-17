@@ -740,7 +740,8 @@ function updateKPIs(prods) {
 
 // ── TABLE ─────────────────────────────────────────────────────────────────────
 function stkCell(v) {
-  const cls = v===0?'stk-0':v===1?'stk-1':v<5?'stk-few':'stk-ok';
+  if (v === 0) return `<span class="stk-cell stk-0">-</span>`;
+  const cls = v===1?'stk-1':v<5?'stk-few':'stk-ok';
   return `<span class="stk-cell ${cls}">${v}</span>`;
 }
 function getColVal(p, i, branches) {
@@ -750,19 +751,21 @@ function getColVal(p, i, branches) {
 function sortBy(i){ sortCol===i?sortDir*=-1:(sortCol=i,sortDir=1); applyFilters(); }
 
 function renderTable(prods) {
-  const active = [...selectedBranches];
-  const cols = ['Código','Artículo','Marca',...active];
-  document.getElementById('tableHead').innerHTML = '<tr>'+cols.map((c,i)=>
-    `<th onclick="sortBy(${i})" class="${sortCol===i?(sortDir>0?'sort-asc':'sort-desc'):''}">${c}</th>`
-  ).join('')+'</tr>';
+  // Solo mostrar columnas de sucursales que tienen al menos un producto con stock
+  const active = [...selectedBranches].filter(b => prods.some(p => (p.branch_stocks[b]||0) > 0));
 
   const noRes = document.getElementById('noResults');
   const tbl   = document.getElementById('dataTable');
   if (!prods.length) {
     document.getElementById('tableBody').innerHTML = '';
+    document.getElementById('tableHead').innerHTML = '';
     noRes.style.display = 'block'; tbl.style.display = 'none'; return;
   }
   noRes.style.display = 'none'; tbl.style.display = '';
+
+  document.getElementById('tableHead').innerHTML = '<tr>'+['Código','Artículo','Marca',...active].map((c,i)=>
+    `<th onclick="sortBy(${i})" class="${sortCol===i?(sortDir>0?'sort-asc':'sort-desc'):''}">${c}</th>`
+  ).join('')+'</tr>';
 
   let sorted = [...prods];
   if (sortCol !== null) sorted.sort((a,b) => {
