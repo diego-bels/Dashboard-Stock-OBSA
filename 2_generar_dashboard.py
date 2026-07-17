@@ -21,6 +21,31 @@ source_file = data.get('source_file', '')
 n_products = len(data['products'])
 n_rubros = len(data.get('rubros', []))
 
+# ── CREDENCIALES POR SUCURSAL ──────────────────────────────────────────────────
+# usuario → { password, sucursal }
+# sucursal: nombre exacto del depósito, o None para ver TODAS (admin)
+CREDENCIALES = {
+    'admin':        {'password': 'obsa2025',      'sucursal': None},
+    '25demayo':     {'password': 'mayo2025',       'sucursal': '25 de Mayo'},
+    'tafi':         {'password': 'tafi2025',       'sucursal': 'Tafi del Valle'},
+    'banda':        {'password': 'banda2025',      'sucursal': 'Banda'},
+    'maipu':        {'password': 'maipu2025',      'sucursal': 'Maipú'},
+    'concepcion':   {'password': 'conc2025',       'sucursal': 'Concepción'},
+    'lules':        {'password': 'lules2025',      'sucursal': 'Lules'},
+    'outlet':       {'password': 'outlet2025',     'sucursal': 'Outlet'},
+    'rosario':      {'password': 'rosario2025',    'sucursal': 'Rosario'},
+    'cafayate':     {'password': 'cafa2025',       'sucursal': 'Cafayate'},
+    'yerbabuena':   {'password': 'yb2025',         'sucursal': 'Yerba Buena'},
+    'monteros':     {'password': 'mont2025',       'sucursal': 'Monteros'},
+    'tafviejo':     {'password': 'tafv2025',       'sucursal': 'Tafi Viejo'},
+    'famailla':     {'password': 'fama2025',       'sucursal': 'Famailla'},
+    'santamaria':   {'password': 'santa2025',      'sucursal': 'Santa María'},
+    'big':          {'password': 'big2025',        'sucursal': 'Big'},
+    'aguilares':    {'password': 'agui2025',       'sucursal': 'Aguilares'},
+    'alberdi':      {'password': 'albe2025',       'sucursal': 'Alberdi'},
+}
+creds_json = json.dumps(CREDENCIALES, ensure_ascii=False)
+
 HTML = r"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -126,6 +151,24 @@ HTML = r"""<!DOCTYPE html>
   .prod-name{font-size:10px;flex:1;line-height:1.3}
   .prod-rubro{font-size:9px;color:var(--blue);background:#E8F0FE;padding:1px 5px;border-radius:8px;white-space:nowrap}
 
+  /* LOGIN */
+  .login-overlay{position:fixed;inset:0;background:var(--navy);z-index:2000;display:flex;align-items:center;justify-content:center}
+  .login-overlay.hidden{display:none}
+  .login-box{background:#fff;border-radius:14px;padding:36px 32px;width:340px;max-width:95vw;box-shadow:0 8px 32px rgba(0,0,0,.3)}
+  .login-logo{text-align:center;margin-bottom:20px}
+  .login-logo h2{color:var(--navy);font-size:20px;font-weight:bold;margin-top:8px}
+  .login-logo p{color:var(--sub);font-size:12px;margin-top:4px}
+  .login-field{margin-bottom:14px}
+  .login-field label{display:block;font-size:11px;font-weight:bold;color:var(--navy);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px}
+  .login-field input{width:100%;border:1.5px solid var(--border);border-radius:7px;padding:9px 12px;font-size:13px;color:var(--text);outline:none;transition:.2s}
+  .login-field input:focus{border-color:var(--blue)}
+  .login-btn{width:100%;padding:10px;background:var(--navy);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:bold;cursor:pointer;margin-top:6px;transition:.2s}
+  .login-btn:hover{background:var(--blue)}
+  .login-error{color:#C00000;font-size:12px;text-align:center;margin-top:10px;min-height:18px}
+  .logout-btn{padding:5px 12px;border-radius:5px;border:1.5px solid rgba(255,255,255,.4);background:transparent;color:#fff;cursor:pointer;font-size:11px}
+  .logout-btn:hover{background:rgba(255,255,255,.15)}
+  .session-info{font-size:11px;color:#a0b4cc;margin-right:8px}
+
   /* MODAL */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}
   .modal-overlay.open{display:flex}
@@ -141,12 +184,37 @@ HTML = r"""<!DOCTYPE html>
 </head>
 <body>
 
+<!-- LOGIN OVERLAY -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">
+      <div style="font-size:40px">📦</div>
+      <h2>Stock — Última Unidad</h2>
+      <p>Oscar Barbieri S.A.</p>
+    </div>
+    <div class="login-field">
+      <label>Usuario</label>
+      <input type="text" id="loginUser" placeholder="Ingresá tu usuario" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('loginPass').focus()">
+    </div>
+    <div class="login-field">
+      <label>Contraseña</label>
+      <input type="password" id="loginPass" placeholder="Ingresá tu contraseña" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Ingresar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
 <div class="header">
   <div>
     <h1>📦 Dashboard Stock — Última Unidad Sin Reposición</h1>
     <div class="meta">SOURCE_FILE &nbsp;|&nbsp; Actualizado: TODAY_STR</div>
   </div>
-  <button class="btn btn-green" style="flex-shrink:0" onclick="openExportModal()">⬇ Exportar Excel</button>
+  <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
+    <span class="session-info" id="sessionInfo"></span>
+    <button class="btn btn-green" onclick="openExportModal()">⬇ Exportar Excel</button>
+    <button class="logout-btn" onclick="doLogout()">Cerrar sesión</button>
+  </div>
 </div>
 
 <div class="layout">
@@ -185,7 +253,7 @@ HTML = r"""<!DOCTYPE html>
 
     <div class="divider"></div>
 
-    <div class="filter-section">
+    <div class="filter-section" id="branchSection">
       <div class="filter-label-row">
         <span class="filter-label">Sucursales</span>
         <span class="lnk" id="selTodoLbl" onclick="toggleAllBranches()">Desel. todo</span>
@@ -262,9 +330,47 @@ HTML = r"""<!DOCTYPE html>
 const RAW = DATA_PLACEHOLDER;
 const ALL_BRANCHES = RAW.branches;
 const PRODUCTS = RAW.products;
+const CREDS = CREDS_PLACEHOLDER;
 
 let selectedBranches = new Set(ALL_BRANCHES);
 let sortCol = null, sortDir = 1, currentView = 'table';
+let currentUser = null, currentSucursal = null;
+
+// ── LOGIN ─────────────────────────────────────────────────────────────────────
+function doLogin() {
+  const user = document.getElementById('loginUser').value.trim().toLowerCase();
+  const pass = document.getElementById('loginPass').value;
+  const cred = CREDS[user];
+  if (!cred || cred.password !== pass) {
+    document.getElementById('loginError').textContent = 'Usuario o contraseña incorrectos.';
+    document.getElementById('loginPass').value = '';
+    return;
+  }
+  currentUser = user;
+  currentSucursal = cred.sucursal;
+  document.getElementById('loginOverlay').classList.add('hidden');
+  document.getElementById('loginError').textContent = '';
+  const label = currentSucursal ? currentSucursal : 'Administrador (todas las sucursales)';
+  document.getElementById('sessionInfo').textContent = label;
+  // Si es sucursal específica: filtrar y ocultar el selector de sucursales
+  if (currentSucursal) {
+    selectedBranches = new Set([currentSucursal]);
+    document.getElementById('branchSection').style.display = 'none';
+  }
+  initFilters();
+  applyFilters();
+}
+
+function doLogout() {
+  currentUser = null; currentSucursal = null;
+  selectedBranches = new Set(ALL_BRANCHES);
+  document.getElementById('loginUser').value = '';
+  document.getElementById('loginPass').value = '';
+  document.getElementById('sessionInfo').textContent = '';
+  document.getElementById('branchSection').style.display = '';
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  resetFilters();
+}
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
 function initFilters() { buildBranchList(); }
@@ -572,8 +678,8 @@ function resetFilters() {
   buildBranchList(); applyFilters();
 }
 
-initFilters();
-applyFilters();
+// No iniciar hasta login
+document.getElementById('loginUser').focus();
 </script>
 </body>
 </html>"""
@@ -581,7 +687,8 @@ applyFilters();
 HTML = (HTML
     .replace('TODAY_STR', today_str)
     .replace('SOURCE_FILE', source_file)
-    .replace('DATA_PLACEHOLDER', data_json))
+    .replace('DATA_PLACEHOLDER', data_json)
+    .replace('CREDS_PLACEHOLDER', creds_json))
 
 out_path = BASE / 'Dashboard.html'
 with open(out_path, 'w', encoding='utf-8') as f:
