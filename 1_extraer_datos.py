@@ -210,15 +210,32 @@ print(f"  Productos COL=0: {len(records):,}")
 print(f"  Con última unidad: {last_unit_count:,}")
 
 # ── DETECCIÓN DE VENTAS (comparación con snapshot anterior) ───────────────────
-prev_path     = BASE / 'stock_prev.json'
+prev_path      = BASE / 'stock_prev.json'
 historial_path = BASE / 'ventas_historial.json'
 
-# Snapshot actual: {codigo: {sucursal: stock}}
-# Incluye TODOS los productos del Excel (no solo última unidad) para detectar 0s
+# Snapshot completo: TODOS los productos del Excel (sin filtros de COL ni última unidad)
+# Necesario para verificar correctamente si COL sigue en 0 en la corrida actual
 snapshot_actual = {}
-for rec in records:
-    snapshot_actual[rec['codigo']] = {
-        suc: rec['branch_stocks'].get(suc, 0) for suc in SUCURSALES
+for _, row in df.iterrows():
+    rubro  = clean_text(safe_str(row.get('Rubro', '')))
+    familia = clean_text(safe_str(row.get('Familia', '')))
+    art    = clean_text(row.get(desc_col, ''))
+    marca  = clean_text(safe_str(row.get('Marca', '')))
+    try:
+        codigo = str(int(float(row[cod_col]))).zfill(6)
+    except Exception:
+        codigo = clean_text(str(row[cod_col]))
+    branch_stocks = {
+        DEPOSITOS[d]: safe_int(row.get(d, 0))
+        for d in DEPOSITOS if d != COL_KEY
+    }
+    snapshot_actual[codigo] = {
+        'col':      safe_int(row.get(COL_KEY, 0)),
+        'stocks':   branch_stocks,
+        'articulo': art,
+        'rubro':    rubro,
+        'familia':  familia,
+        'marca':    marca,
     }
 
 ventas_nuevas = []
@@ -227,20 +244,37 @@ if prev_path.exists():
     with open(prev_path, encoding='utf-8') as f:
         snapshot_prev = json.load(f)
 
+    # Soporte formato viejo {codigo: {suc: stock}} y nuevo {codigo: {stocks:{}, ...}}
     ahora = datetime.now()
     fecha_str = ahora.strftime('%d/%m/%Y')
     hora_str  = ahora.strftime('%H:%M')
 
-    # Mapa codigo → info del producto actual
-    info_map = {r['codigo']: r for r in records}
+    for codigo, prev_entry in snapshot_prev.items():
+        # Soporte formato viejo (solo stocks) y nuevo (col + stocks + info)
+        if isinstance(prev_entry, dict) and 'stocks' in prev_entry:
+            stocks_prev = prev_entry['stocks']
+            col_prev    = prev_entry.get('col', 0)
+        else:
+            stocks_prev = prev_entry
+            col_prev    = 0  # formato viejo asume COL=0
 
-    for codigo, stocks_prev in snapshot_prev.items():
-        stocks_act = snapshot_actual.get(codigo, {})
+        act_entry  = snapshot_actual.get(codigo, {})
+        stocks_act = act_entry.get('stocks', {})
+        col_act    = act_entry.get('col', -1)  # -1 = producto no encontrado en Excel actual
+
         for suc in SUCURSALES:
             stk_prev = stocks_prev.get(suc, 0)
             stk_act  = stocks_act.get(suc, 0)
-            if stk_prev == 1 and stk_act == 0:
-                info = info_map.get(codigo, {})
+
+            # Condiciones:
+            # 1. Ayer: sucursal tenía stock = 1
+            # 2. Ayer: COL = 0 (sin reposición)
+            # 3. Hoy:  sucursal pasó a stock = 0
+            # 4. Hoy:  COL sigue en 0 (no fue reposición, fue venta)
+            if (stk_prev == 1 and col_prev == 0
+                    and stk_act == 0 and col_act == 0):
+                # Info del snapshot anterior (más confiable: el producto puede no estar en el actual)
+                info = prev_entry if isinstance(prev_entry, dict) and 'articulo' in prev_entry else act_entry
                 ventas_nuevas.append({
                     'fecha':    fecha_str,
                     'hora':     hora_str,
