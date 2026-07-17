@@ -1,6 +1,8 @@
 # Datos generados automáticamente (no van al repo — cada uno los genera localmente)
 data.json
 Dashboard.html
+stock_prev.json
+ventas_historial.json
 
 # La carpeta docs/ SÍ va al repo (es el deploy de GitHub Pages)
 !docs/

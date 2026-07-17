@@ -4,6 +4,7 @@ Formato esperado: Stock Total DDMM.xlsx (exportado del sistema con todos los dep
 """
 import pandas as pd, json, re, sys, glob, os
 from pathlib import Path
+from datetime import datetime
 
 BASE = Path(__file__).parent
 
@@ -207,5 +208,66 @@ with open(out_path, 'w', encoding='utf-8') as f:
 
 print(f"  Productos COL=0: {len(records):,}")
 print(f"  Con última unidad: {last_unit_count:,}")
+
+# ── DETECCIÓN DE VENTAS (comparación con snapshot anterior) ───────────────────
+prev_path     = BASE / 'stock_prev.json'
+historial_path = BASE / 'ventas_historial.json'
+
+# Snapshot actual: {codigo: {sucursal: stock}}
+# Incluye TODOS los productos del Excel (no solo última unidad) para detectar 0s
+snapshot_actual = {}
+for rec in records:
+    snapshot_actual[rec['codigo']] = {
+        suc: rec['branch_stocks'].get(suc, 0) for suc in SUCURSALES
+    }
+
+ventas_nuevas = []
+
+if prev_path.exists():
+    with open(prev_path, encoding='utf-8') as f:
+        snapshot_prev = json.load(f)
+
+    ahora = datetime.now()
+    fecha_str = ahora.strftime('%d/%m/%Y')
+    hora_str  = ahora.strftime('%H:%M')
+
+    # Mapa codigo → info del producto actual
+    info_map = {r['codigo']: r for r in records}
+
+    for codigo, stocks_prev in snapshot_prev.items():
+        stocks_act = snapshot_actual.get(codigo, {})
+        for suc in SUCURSALES:
+            stk_prev = stocks_prev.get(suc, 0)
+            stk_act  = stocks_act.get(suc, 0)
+            if stk_prev == 1 and stk_act == 0:
+                info = info_map.get(codigo, {})
+                ventas_nuevas.append({
+                    'fecha':    fecha_str,
+                    'hora':     hora_str,
+                    'sucursal': suc,
+                    'codigo':   codigo,
+                    'articulo': info.get('articulo', ''),
+                    'rubro':    info.get('rubro', ''),
+                    'familia':  info.get('familia', ''),
+                    'marca':    info.get('marca', ''),
+                })
+
+    if ventas_nuevas:
+        historial = []
+        if historial_path.exists():
+            with open(historial_path, encoding='utf-8') as f:
+                historial = json.load(f)
+        historial.extend(ventas_nuevas)
+        with open(historial_path, 'w', encoding='utf-8') as f:
+            json.dump(historial, f, ensure_ascii=False, indent=2)
+        print(f"  Ventas detectadas: {len(ventas_nuevas):,} (acumulado: {len(historial):,})")
+    else:
+        print(f"  Sin nuevas ventas detectadas respecto al snapshot anterior.")
+else:
+    print(f"  (Primera corrida — sin snapshot previo para comparar)")
+
+# Guardar snapshot actual para la próxima comparación
+with open(prev_path, 'w', encoding='utf-8') as f:
+    json.dump(snapshot_actual, f, ensure_ascii=False)
 print(f"  Rubros: {len(rubros_set)}")
 print(f"  Guardado: data.json")

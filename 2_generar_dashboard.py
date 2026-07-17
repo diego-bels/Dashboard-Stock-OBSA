@@ -168,6 +168,19 @@ HTML = r"""<!DOCTYPE html>
   .logout-btn{padding:5px 12px;border-radius:5px;border:1.5px solid rgba(255,255,255,.4);background:transparent;color:#fff;cursor:pointer;font-size:11px}
   .logout-btn:hover{background:rgba(255,255,255,.15)}
   .session-info{font-size:11px;color:#a0b4cc;margin-right:8px}
+  .tab-bar{display:flex;gap:0;border-bottom:2px solid var(--border);background:#fff;padding:0 14px;flex-shrink:0}
+  .tab-btn{padding:8px 16px;border:none;background:none;cursor:pointer;font-size:12px;color:var(--sub);border-bottom:2px solid transparent;margin-bottom:-2px;font-weight:bold}
+  .tab-btn.active{color:var(--navy);border-bottom-color:var(--navy)}
+  .tab-btn:hover{color:var(--navy)}
+
+  /* PANEL VENTAS */
+  .ventas-wrap{flex:1;overflow:auto;padding:14px}
+  .ventas-filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
+  .ventas-filters select,.ventas-filters input{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;color:var(--text)}
+  .ventas-filters select:focus,.ventas-filters input:focus{outline:none;border-color:var(--blue)}
+  .ventas-summary{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+  .ventas-kpi{background:#E8F0FE;border-radius:7px;padding:6px 14px;font-size:12px;color:var(--navy)}
+  .ventas-kpi b{font-size:16px;display:block}
 
   /* MODAL */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}
@@ -277,7 +290,12 @@ HTML = r"""<!DOCTYPE html>
       <div class="kpi"><div class="kpi-val" id="kpiAlerts">—</div><div class="kpi-lbl">Registros última unidad</div></div>
     </div>
 
-    <div class="toolbar">
+    <div class="tab-bar" id="tabBar">
+      <button class="tab-btn active" id="tabStock" onclick="setTab('stock')">📦 Stock Última Unidad</button>
+      <button class="tab-btn" id="tabVentas" onclick="setTab('ventas')" style="display:none">📉 Ventas Detectadas</button>
+    </div>
+
+    <div class="toolbar" id="stockToolbar">
       <span class="results-count" id="resultsCount"></span>
     </div>
 
@@ -292,6 +310,22 @@ HTML = r"""<!DOCTYPE html>
     </div>
 
     <div class="summary-grid" id="summaryView" style="display:none"></div>
+
+    <!-- PANEL VENTAS (solo admin) -->
+    <div id="ventasView" style="display:none;flex:1;overflow:hidden;display:none;flex-direction:column">
+      <div class="ventas-wrap">
+        <div class="ventas-filters">
+          <select id="vFiltroSuc" onchange="renderVentas()"><option value="">Todas las sucursales</option></select>
+          <input type="date" id="vFiltroDesde" onchange="renderVentas()" title="Desde">
+          <input type="date" id="vFiltroHasta" onchange="renderVentas()" title="Hasta">
+          <input type="text" id="vFiltroTexto" placeholder="Buscar artículo, código o marca…" oninput="renderVentas()" style="min-width:220px">
+          <button class="btn btn-outline" onclick="resetVentasFiltros()">Limpiar</button>
+          <button class="btn btn-green" onclick="exportVentas()">⬇ Exportar Excel</button>
+        </div>
+        <div class="ventas-summary" id="ventasSummary"></div>
+        <div id="ventasTable"></div>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -324,6 +358,7 @@ HTML = r"""<!DOCTYPE html>
 
 <script>
 const RAW = DATA_PLACEHOLDER;
+const VENTAS_HISTORIAL = VENTAS_PLACEHOLDER;
 const ALL_BRANCHES = RAW.branches;
 const PRODUCTS = RAW.products;
 const CREDS = CREDS_PLACEHOLDER;
@@ -353,6 +388,12 @@ function doLogin() {
     selectedBranches = new Set([currentSucursal]);
     document.getElementById('branchSection').style.display = 'none';
     document.getElementById('kpiBranchesCard').style.display = 'none';
+  } else {
+    // Admin: mostrar tab de ventas si hay historial
+    if (VENTAS_HISTORIAL.length > 0) {
+      document.getElementById('tabVentas').style.display = '';
+    }
+    initVentasFiltros();
   }
   refreshAcValues();
   initFilters();
@@ -367,9 +408,103 @@ function doLogout() {
   document.getElementById('sessionInfo').textContent = '';
   document.getElementById('branchSection').style.display = '';
   document.getElementById('kpiBranchesCard').style.display = '';
+  document.getElementById('tabVentas').style.display = 'none';
+  setTab('stock');
   document.getElementById('loginOverlay').classList.remove('hidden');
   refreshAcValues();
   resetFilters();
+}
+
+// ── TABS ──────────────────────────────────────────────────────────────────────
+let currentTab = 'stock';
+function setTab(tab) {
+  currentTab = tab;
+  document.getElementById('tabStock').classList.toggle('active', tab==='stock');
+  document.getElementById('tabVentas').classList.toggle('active', tab==='ventas');
+  document.getElementById('stockToolbar').style.display  = tab==='stock'  ? '' : 'none';
+  document.getElementById('tableView').style.display     = tab==='stock'  ? '' : 'none';
+  document.getElementById('summaryView').style.display   = 'none';
+  document.getElementById('ventasView').style.display    = tab==='ventas' ? 'flex' : 'none';
+  document.getElementById('kpiProds').closest('.kpi-bar').style.display = tab==='stock' ? '' : 'none';
+  if (tab==='ventas') renderVentas();
+}
+
+// ── VENTAS ────────────────────────────────────────────────────────────────────
+function initVentasFiltros() {
+  const sucursales = [...new Set(VENTAS_HISTORIAL.map(v=>v.sucursal))].sort();
+  const sel = document.getElementById('vFiltroSuc');
+  sucursales.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+}
+
+function getVentasFiltradas() {
+  const suc   = document.getElementById('vFiltroSuc').value;
+  const desde = document.getElementById('vFiltroDesde').value;
+  const hasta = document.getElementById('vFiltroHasta').value;
+  const texto = document.getElementById('vFiltroTexto').value.toLowerCase().trim();
+  return VENTAS_HISTORIAL.filter(v => {
+    if (suc && v.sucursal !== suc) return false;
+    if (desde || hasta) {
+      // fecha en formato dd/mm/yyyy → convertir para comparar
+      const [d,m,a] = v.fecha.split('/');
+      const iso = `${a}-${m}-${d}`;
+      if (desde && iso < desde) return false;
+      if (hasta && iso > hasta) return false;
+    }
+    if (texto && !v.articulo.toLowerCase().includes(texto) &&
+        !v.codigo.includes(texto) && !v.marca.toLowerCase().includes(texto)) return false;
+    return true;
+  });
+}
+
+function renderVentas() {
+  const ventas = getVentasFiltradas();
+  // KPIs
+  const sucSet = new Set(ventas.map(v=>v.sucursal));
+  document.getElementById('ventasSummary').innerHTML =
+    `<div class="ventas-kpi"><b>${ventas.length.toLocaleString('es-AR')}</b>Registros</div>
+     <div class="ventas-kpi"><b>${sucSet.size}</b>Sucursales</div>
+     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>`;
+  // Tabla
+  if (!ventas.length) {
+    document.getElementById('ventasTable').innerHTML =
+      '<div class="no-results"><div class="icon">📭</div><div>Sin ventas detectadas para los filtros aplicados.</div></div>';
+    return;
+  }
+  const cols = ['Fecha','Hora','Sucursal','Código','Artículo','Rubro','Familia','Marca'];
+  document.getElementById('ventasTable').innerHTML = `
+    <table style="border-collapse:collapse;width:100%;font-size:11px">
+      <thead><tr>${cols.map(c=>`<th style="background:var(--navy);color:#fff;padding:6px 8px;text-align:left;white-space:nowrap">${c}</th>`).join('')}</tr></thead>
+      <tbody>${ventas.map((v,i)=>`<tr style="${i%2?'background:#F2F7FF':''}">
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.fecha}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.hora}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border);font-weight:bold">${v.sucursal}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.codigo}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border);max-width:260px">${v.articulo}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border)"><span class="rubro-tag">${v.rubro}</span></td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.familia}</td>
+        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.marca}</td>
+      </tr>`).join('')}</tbody>
+    </table>`;
+}
+
+function resetVentasFiltros() {
+  document.getElementById('vFiltroSuc').value = '';
+  document.getElementById('vFiltroDesde').value = '';
+  document.getElementById('vFiltroHasta').value = '';
+  document.getElementById('vFiltroTexto').value = '';
+  renderVentas();
+}
+
+function exportVentas() {
+  const ventas = getVentasFiltradas();
+  if (!ventas.length) { alert('Sin datos para exportar.'); return; }
+  const wb = XLSX.utils.book_new();
+  const rows = [['Fecha','Hora','Sucursal','Código','Artículo','Rubro','Familia','Marca']];
+  ventas.forEach(v => rows.push([v.fecha,v.hora,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca]));
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:12},{wch:8},{wch:14},{wch:10},{wch:50},{wch:18},{wch:16},{wch:14}];
+  XLSX.utils.book_append_sheet(wb, ws, 'Ventas Última Unidad');
+  XLSX.writeFile(wb, `Ventas_Ultima_Unidad_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 // ── INIT ─────────────────────────────────────────────────────────────────────
@@ -726,11 +861,19 @@ document.getElementById('loginUser').focus();
 </body>
 </html>"""
 
+# Leer historial de ventas si existe
+ventas_path = BASE / 'ventas_historial.json'
+ventas_json = '[]'
+if ventas_path.exists():
+    with open(ventas_path, encoding='utf-8') as f:
+        ventas_json = f.read()
+
 HTML = (HTML
     .replace('TODAY_STR', today_str)
     .replace('SOURCE_FILE', source_file)
     .replace('DATA_PLACEHOLDER', data_json)
-    .replace('CREDS_PLACEHOLDER', creds_json))
+    .replace('CREDS_PLACEHOLDER', creds_json)
+    .replace('VENTAS_PLACEHOLDER', ventas_json))
 
 out_path = BASE / 'Dashboard.html'
 with open(out_path, 'w', encoding='utf-8') as f:
