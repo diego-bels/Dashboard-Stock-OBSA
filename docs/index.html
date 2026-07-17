@@ -409,12 +409,34 @@ function acHighlight(q, text) {
   return text.slice(0,i) + '<em>' + text.slice(i, i+q.length) + '</em>' + text.slice(i+q.length);
 }
 
-function acGetRubroValues() {
+// Devuelve el pool de productos activo según familia+rubro seleccionados
+function acBasePool() {
+  const base = currentSucursal
+    ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0)
+    : PRODUCTS;
   const familiaVal = document.getElementById('familiaInput').value.trim();
-  if (familiaVal && FAMILIA_RUBROS[familiaVal]) {
-    return [...FAMILIA_RUBROS[familiaVal]].sort();
+  const rubroVal   = document.getElementById('rubroInput').value.trim();
+  return base.filter(p =>
+    (!familiaVal || (acExact.familia ? p.familia === familiaVal : p.familia.toLowerCase().includes(familiaVal.toLowerCase()))) &&
+    (!rubroVal   || (acExact.rubro   ? p.rubro   === rubroVal   : p.rubro.toLowerCase().includes(rubroVal.toLowerCase())))
+  );
+}
+
+function acGetPoolFor(field) {
+  if (field === 'familia') {
+    const base = currentSucursal ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0) : PRODUCTS;
+    return [...new Set(base.map(p=>p.familia).filter(Boolean))].sort();
   }
-  return AC_FIELDS.rubro.values;
+  if (field === 'rubro') {
+    const familiaVal = document.getElementById('familiaInput').value.trim();
+    const base = currentSucursal ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0) : PRODUCTS;
+    const pool = familiaVal ? base.filter(p => acExact.familia ? p.familia === familiaVal : p.familia.toLowerCase().includes(familiaVal.toLowerCase())) : base;
+    return [...new Set(pool.map(p=>p.rubro).filter(Boolean))].sort();
+  }
+  if (field === 'marca') {
+    return [...new Set(acBasePool().map(p=>p.marca).filter(Boolean))].sort();
+  }
+  return AC_FIELDS[field].values;
 }
 
 function acUpdate(field) {
@@ -422,7 +444,7 @@ function acUpdate(field) {
   const input = document.getElementById(f.inputId);
   const drop  = document.getElementById(f.dropId);
   const q = input.value.trim();
-  const pool = field === 'rubro' ? acGetRubroValues() : f.values;
+  const pool = acGetPoolFor(field);
   const matches = q ? pool.filter(v => v.toLowerCase().includes(q.toLowerCase())) : pool;
   acActiveIdx[field] = -1;
   if (!matches.length) { drop.classList.remove('open'); applyFilters(); return; }
@@ -441,12 +463,15 @@ function acSelect(field, value) {
   document.getElementById(f.inputId).value = value;
   document.getElementById(f.dropId).classList.remove('open');
   acExact[field] = true;  // selección desde dropdown → exact match
-  // Al cambiar familia, limpiar rubro si ya no pertenece a esa familia
+  // Cascada: al cambiar familia limpiar rubro y marca; al cambiar rubro limpiar marca
   if (field === 'familia') {
-    const rubroVal = document.getElementById('rubroInput').value.trim();
-    if (rubroVal && FAMILIA_RUBROS[value] && !FAMILIA_RUBROS[value].has(rubroVal)) {
-      document.getElementById('rubroInput').value = '';
-    }
+    document.getElementById('rubroInput').value = '';
+    document.getElementById('marcaInput').value = '';
+    acExact.rubro = false; acExact.marca = false;
+  }
+  if (field === 'rubro') {
+    document.getElementById('marcaInput').value = '';
+    acExact.marca = false;
   }
   applyFilters();
 }
