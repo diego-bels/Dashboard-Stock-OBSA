@@ -273,16 +273,12 @@ HTML = r"""<!DOCTYPE html>
     <div class="kpi-bar">
       <div class="kpi"><div class="kpi-val" id="kpiProds">—</div><div class="kpi-lbl">Productos</div></div>
       <div class="kpi"><div class="kpi-val" id="kpiRubros">—</div><div class="kpi-lbl">Rubros</div></div>
-      <div class="kpi"><div class="kpi-val" id="kpiBranches">—</div><div class="kpi-lbl">Sucursales c/ alerta</div></div>
+      <div class="kpi" id="kpiBranchesCard"><div class="kpi-val" id="kpiBranches">—</div><div class="kpi-lbl">Sucursales c/ alerta</div></div>
       <div class="kpi"><div class="kpi-val" id="kpiAlerts">—</div><div class="kpi-lbl">Registros última unidad</div></div>
     </div>
 
     <div class="toolbar">
       <span class="results-count" id="resultsCount"></span>
-      <div class="view-toggle">
-        <button class="view-btn active" id="btnTable"   onclick="setView('table')">≡ Tabla</button>
-        <button class="view-btn"        id="btnSummary" onclick="setView('summary')">⊞ Por Sucursal</button>
-      </div>
     </div>
 
     <div class="table-wrap" id="tableView">
@@ -352,11 +348,13 @@ function doLogin() {
   document.getElementById('loginError').textContent = '';
   const label = currentSucursal ? currentSucursal : 'Administrador (todas las sucursales)';
   document.getElementById('sessionInfo').textContent = label;
-  // Si es sucursal específica: filtrar y ocultar el selector de sucursales
+  // Si es sucursal específica: filtrar, ocultar selector y card de sucursales
   if (currentSucursal) {
     selectedBranches = new Set([currentSucursal]);
     document.getElementById('branchSection').style.display = 'none';
+    document.getElementById('kpiBranchesCard').style.display = 'none';
   }
+  refreshAcValues();
   initFilters();
   applyFilters();
 }
@@ -368,7 +366,9 @@ function doLogout() {
   document.getElementById('loginPass').value = '';
   document.getElementById('sessionInfo').textContent = '';
   document.getElementById('branchSection').style.display = '';
+  document.getElementById('kpiBranchesCard').style.display = '';
   document.getElementById('loginOverlay').classList.remove('hidden');
+  refreshAcValues();
   resetFilters();
 }
 
@@ -427,10 +427,27 @@ PRODUCTS.forEach(p => {
 });
 
 const AC_FIELDS = {
-  rubro:   { inputId:'rubroInput',   dropId:'rubroDropdown',   values: [...new Set(PRODUCTS.map(p=>p.rubro).filter(Boolean))].sort() },
-  familia: { inputId:'familiaInput', dropId:'familiaDropdown', values: [...new Set(PRODUCTS.map(p=>p.familia).filter(Boolean))].sort() },
-  marca:   { inputId:'marcaInput',   dropId:'marcaDropdown',   values: [...new Set(PRODUCTS.map(p=>p.marca).filter(Boolean))].sort() },
+  rubro:   { inputId:'rubroInput',   dropId:'rubroDropdown',   values:[] },
+  familia: { inputId:'familiaInput', dropId:'familiaDropdown', values:[] },
+  marca:   { inputId:'marcaInput',   dropId:'marcaDropdown',   values:[] },
 };
+
+// Recalcula las opciones disponibles según los productos con stock en la sucursal activa
+function refreshAcValues() {
+  const pool = currentSucursal
+    ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0)
+    : PRODUCTS;
+  AC_FIELDS.familia.values = [...new Set(pool.map(p=>p.familia).filter(Boolean))].sort();
+  AC_FIELDS.marca.values   = [...new Set(pool.map(p=>p.marca).filter(Boolean))].sort();
+  AC_FIELDS.rubro.values   = [...new Set(pool.map(p=>p.rubro).filter(Boolean))].sort();
+  // Reconstruir mapa familia→rubros
+  Object.keys(FAMILIA_RUBROS).forEach(k => delete FAMILIA_RUBROS[k]);
+  pool.forEach(p => {
+    if (!p.familia || !p.rubro) return;
+    if (!FAMILIA_RUBROS[p.familia]) FAMILIA_RUBROS[p.familia] = new Set();
+    FAMILIA_RUBROS[p.familia].add(p.rubro);
+  });
+}
 let acActiveIdx = {};
 
 function acHighlight(q, text) {
@@ -564,14 +581,14 @@ function stkCell(v) {
   return `<span class="stk-cell ${cls}">${v}</span>`;
 }
 function getColVal(p, i, branches) {
-  switch(i){case 0:return p.codigo;case 1:return p.rubro;case 2:return p.articulo;
-    case 3:return p.marca;case 4:return p.col_stock;default:return p.branch_stocks[branches[i-5]]||0;}
+  switch(i){case 0:return p.codigo;case 1:return p.articulo;
+    case 2:return p.marca;default:return p.branch_stocks[branches[i-3]]||0;}
 }
 function sortBy(i){ sortCol===i?sortDir*=-1:(sortCol=i,sortDir=1); applyFilters(); }
 
 function renderTable(prods) {
   const active = [...selectedBranches];
-  const cols = ['Código','Rubro','Artículo','Marca','Stock COL',...active];
+  const cols = ['Código','Artículo','Marca',...active];
   document.getElementById('tableHead').innerHTML = '<tr>'+cols.map((c,i)=>
     `<th onclick="sortBy(${i})" class="${sortCol===i?(sortDir>0?'sort-asc':'sort-desc'):''}">${c}</th>`
   ).join('')+'</tr>';
@@ -593,10 +610,8 @@ function renderTable(prods) {
   document.getElementById('tableBody').innerHTML = sorted.map((p,ri) =>
     `<tr style="${ri%2?'background:#F2F7FF':''}">
       <td>${p.codigo}</td>
-      <td><span class="rubro-tag">${p.rubro}</span></td>
       <td class="art">${p.articulo}</td>
       <td style="text-align:center">${p.marca}</td>
-      <td style="text-align:center">${stkCell(0)}</td>
       ${active.map(b=>`<td style="padding:2px 4px;text-align:center">${stkCell(p.branch_stocks[b]||0)}</td>`).join('')}
     </tr>`
   ).join('');
