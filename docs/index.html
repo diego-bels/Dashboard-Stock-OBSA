@@ -481,6 +481,8 @@ function getFilteredProducts() {
     if (rubro)   { const rv = p.rubro.toLowerCase();   if (acExact.rubro   ? rv !== rubro   : !rv.includes(rubro))   return false; }
     if (familia) { const fv = p.familia.toLowerCase(); if (acExact.familia ? fv !== familia : !fv.includes(familia)) return false; }
     if (marca)   { const mv = p.marca.toLowerCase();   if (acExact.marca   ? mv !== marca   : !mv.includes(marca))   return false; }
+    // Si está logueado como sucursal, solo mostrar productos con stock > 0 en esa sucursal
+    if (currentSucursal && (p.branch_stocks[currentSucursal] || 0) === 0) return false;
     return true;
   });
 }
