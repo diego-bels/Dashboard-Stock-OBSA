@@ -225,7 +225,7 @@ HTML = r"""<!DOCTYPE html>
   </div>
   <div style="display:flex;align-items:center;gap:10px;flex-shrink:0">
     <span class="session-info" id="sessionInfo"></span>
-    <button class="btn btn-green" onclick="openExportModal()">⬇ Exportar Excel</button>
+    <button class="btn btn-green" onclick="exportContextual()">⬇ Exportar Excel</button>
     <button class="logout-btn" onclick="doLogout()">Cerrar sesión</button>
   </div>
 </div>
@@ -320,7 +320,6 @@ HTML = r"""<!DOCTYPE html>
           <input type="date" id="vFiltroHasta" onchange="renderVentas()" title="Hasta">
           <input type="text" id="vFiltroTexto" placeholder="Buscar artículo, código o marca…" oninput="renderVentas()" style="min-width:220px">
           <button class="btn btn-outline" onclick="resetVentasFiltros()">Limpiar</button>
-          <button class="btn btn-green" onclick="exportVentas()">⬇ Exportar Excel</button>
         </div>
         <div class="ventas-summary" id="ventasSummary"></div>
         <div id="ventasTable"></div>
@@ -329,32 +328,6 @@ HTML = r"""<!DOCTYPE html>
   </div>
 </div>
 
-<!-- EXPORT MODAL -->
-<div class="modal-overlay" id="exportModal">
-  <div class="modal">
-    <h2>⬇ Exportar a Excel</h2>
-    <div class="form-group">
-      <label>Título del informe</label>
-      <input type="text" id="exportTitle" value="Stock - Última Unidad Sin Reposición">
-    </div>
-    <div class="form-group">
-      <label>Destinatario (aparece en el nombre del archivo)</label>
-      <input type="text" id="exportDest" placeholder="Ej: Responsable Famailla">
-    </div>
-    <div class="form-group">
-      <label>Sucursales a incluir</label>
-      <select id="exportMode">
-        <option value="selected">Solo sucursales seleccionadas en filtros</option>
-        <option value="alerts">Solo sucursales con última unidad (filtro actual)</option>
-        <option value="all">Todas las sucursales</option>
-      </select>
-    </div>
-    <div class="modal-actions">
-      <button class="btn btn-outline" onclick="closeExportModal()">Cancelar</button>
-      <button class="btn btn-green"   onclick="exportExcel()">⬇ Descargar</button>
-    </div>
-  </div>
-</div>
 
 <script>
 const RAW = DATA_PLACEHOLDER;
@@ -816,40 +789,30 @@ function setView(v) {
 }
 
 // ── EXPORT ────────────────────────────────────────────────────────────────────
-function openExportModal()  { document.getElementById('exportModal').classList.add('open'); }
-function closeExportModal() { document.getElementById('exportModal').classList.remove('open'); }
+function exportContextual() {
+  if (currentTab === 'ventas') exportVentas();
+  else exportStock();
+}
 
-function exportExcel() {
-  const title = document.getElementById('exportTitle').value || 'Stock';
-  const dest  = document.getElementById('exportDest').value;
-  const mode  = document.getElementById('exportMode').value;
+function exportStock() {
   const prods = getFilteredProducts();
-
-  let exportBranches;
-  if (mode==='selected') exportBranches = [...selectedBranches];
-  else if (mode==='all') exportBranches = ALL_BRANCHES;
-  else exportBranches = ALL_BRANCHES.filter(b => prods.some(p=>(p.branch_stocks[b]||0)===1));
+  const branches = [...selectedBranches].filter(b => prods.some(p => (p.branch_stocks[b]||0) === 1));
+  if (!branches.length) { alert('Sin datos para exportar en las sucursales seleccionadas.'); return; }
 
   const wb = XLSX.utils.book_new();
-
-  // ── Hoja única: una fila por sucursal × producto con última unidad ──
   const rows = [['Sucursal', 'Cant. Registros', 'Código', 'Descripción', 'Rubro', 'Marca']];
-
-  exportBranches.forEach(branch => {
+  branches.forEach(branch => {
     const ps = prods.filter(p => (p.branch_stocks[branch]||0) === 1);
     if (!ps.length) return;
-    const cnt = ps.length;
-    ps.forEach(p => rows.push([branch, cnt, p.codigo, p.articulo, p.rubro, p.marca]));
+    ps.forEach(p => rows.push([branch, ps.length, p.codigo, p.articulo, p.rubro, p.marca]));
   });
 
   const ws = XLSX.utils.aoa_to_sheet(rows);
   ws['!cols'] = [{wch:16},{wch:16},{wch:10},{wch:54},{wch:18},{wch:14}];
   XLSX.utils.book_append_sheet(wb, ws, 'Última Unidad por Sucursal');
 
-  const dateStr = new Date().toISOString().slice(0,10);
-  const destPart = dest ? `_${dest.replace(/[^a-zA-Z0-9áéíóúÁÉÍÓÚñÑ\s]/g,'').replace(/\s+/g,'_')}` : '';
-  XLSX.writeFile(wb, `${title.replace(/[\\/:*?"<>|]/g,'').replace(/\s+/g,'_')}${destPart}_${dateStr}.xlsx`);
-  closeExportModal();
+  const label = currentSucursal ? currentSucursal.replace(/\s+/g,'_') : 'Todas';
+  XLSX.writeFile(wb, `Stock_Ultima_Unidad_${label}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 // ── RESET ─────────────────────────────────────────────────────────────────────
