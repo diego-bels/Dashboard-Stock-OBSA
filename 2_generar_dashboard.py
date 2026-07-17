@@ -193,6 +193,23 @@ HTML = r"""<!DOCTYPE html>
   .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
   .no-results{text-align:center;padding:50px 20px;color:var(--sub)}
   .no-results .icon{font-size:36px;margin-bottom:8px}
+
+  /* ÚLTIMA UNIDAD EN TODA LA EMPRESA */
+  .empresa-panel{background:#fff;border-bottom:2px solid var(--red);flex-shrink:0}
+  .empresa-header{display:flex;align-items:center;gap:8px;padding:7px 14px;cursor:pointer;background:#FFF0F0;user-select:none}
+  .empresa-header:hover{background:#FFE8E8}
+  .empresa-title{font-size:12px;font-weight:bold;color:var(--red);flex:1}
+  .empresa-badge-count{font-size:11px;background:var(--red);color:#fff;border-radius:10px;padding:1px 8px;font-weight:bold}
+  .empresa-body{display:none;overflow-x:auto;max-height:220px;overflow-y:auto}
+  .empresa-body.open{display:block}
+  .empresa-table{width:100%;border-collapse:collapse;font-size:11px}
+  .empresa-table th{background:var(--red);color:#fff;padding:4px 8px;text-align:left;font-size:10px;position:sticky;top:0}
+  .empresa-table td{padding:3px 8px;border-bottom:1px solid #FFE0E0;white-space:nowrap}
+  .empresa-table td.art{white-space:normal;max-width:280px}
+  .empresa-table tr:hover td{background:#FFF5F5}
+  tr.empresa-row{background:#FFF5F5!important;border-left:3px solid var(--red)}
+  tr.empresa-row:hover{background:#FFE8E8!important}
+  .emp-badge{display:inline-block;background:var(--red);color:#fff;font-size:8px;font-weight:bold;padding:1px 4px;border-radius:3px;margin-left:5px;vertical-align:middle;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -288,11 +305,28 @@ HTML = r"""<!DOCTYPE html>
       <div class="kpi"><div class="kpi-val" id="kpiRubros">—</div><div class="kpi-lbl">Rubros</div></div>
       <div class="kpi" id="kpiBranchesCard"><div class="kpi-val" id="kpiBranches">—</div><div class="kpi-lbl">Sucursales c/ alerta</div></div>
       <div class="kpi"><div class="kpi-val" id="kpiAlerts">—</div><div class="kpi-lbl">Registros última unidad</div></div>
+      <div class="kpi" style="background:#FFF0F0;border:1px solid var(--red-bg)"><div class="kpi-val" id="kpiEmpresa" style="color:var(--red)">—</div><div class="kpi-lbl" style="color:var(--red)">Única unidad en empresa</div></div>
     </div>
 
     <div class="tab-bar" id="tabBar">
       <button class="tab-btn active" id="tabStock" onclick="setTab('stock')">📦 Stock Última Unidad</button>
       <button class="tab-btn" id="tabVentas" onclick="setTab('ventas')" style="display:none">📉 Ventas Detectadas</button>
+    </div>
+
+    <!-- PANEL ÚNICA UNIDAD EMPRESA (admin: panel colapsable; todos: marca en tabla) -->
+    <div class="empresa-panel" id="empresaPanel" style="display:none">
+      <div class="empresa-header" onclick="toggleEmpresaPanel()">
+        <span style="font-size:15px">🔴</span>
+        <span class="empresa-title">Última unidad en toda la empresa</span>
+        <span class="empresa-badge-count" id="empresaCount">0</span>
+        <span style="font-size:11px;color:var(--red);margin-left:6px" id="empresaChevron">▼</span>
+      </div>
+      <div class="empresa-body" id="empresaBody">
+        <table class="empresa-table">
+          <thead><tr><th>Código</th><th>Artículo</th><th>Rubro</th><th>Marca</th><th>Sucursal</th></tr></thead>
+          <tbody id="empresaTbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <div class="toolbar" id="stockToolbar">
@@ -688,10 +722,51 @@ function getFilteredProducts() {
   });
 }
 
+// ── ÚLTIMA UNIDAD EMPRESA ─────────────────────────────────────────────────────
+function isSingleCompany(p) {
+  return Object.values(p.branch_stocks).reduce((a,b)=>a+b,0) === 1;
+}
+
+function toggleEmpresaPanel() {
+  const body = document.getElementById('empresaBody');
+  const chev = document.getElementById('empresaChevron');
+  const open = body.classList.toggle('open');
+  chev.textContent = open ? '▲' : '▼';
+}
+
+function updateEmpresaPanel(prods) {
+  // Para sucursales: filtrar por la sucursal activa
+  const checkProds = currentSucursal
+    ? prods.filter(p => (p.branch_stocks[currentSucursal]||0) > 0)
+    : prods;
+  const singles = checkProds.filter(isSingleCompany);
+
+  const panel = document.getElementById('empresaPanel');
+  document.getElementById('empresaCount').textContent = singles.length;
+
+  if (!singles.length) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+
+  // Tabla del panel (solo admin ve el apartado completo)
+  if (!currentSucursal) {
+    document.getElementById('empresaTbody').innerHTML = singles.map(p => {
+      const suc = Object.entries(p.branch_stocks).find(([,v])=>v===1)?.[0] || '';
+      return `<tr>
+        <td>${p.codigo}</td>
+        <td class="art">${p.articulo}</td>
+        <td>${p.rubro}</td>
+        <td>${p.marca}</td>
+        <td><b>${suc}</b></td>
+      </tr>`;
+    }).join('');
+  }
+}
+
 function applyFilters() {
   const prods = getFilteredProducts();
   updateKPIs(prods);
   buildBranchList(prods);
+  updateEmpresaPanel(prods);
   if (currentView === 'table') renderTable(prods);
   else renderSummary(prods);
 }
@@ -708,6 +783,7 @@ function updateKPIs(prods) {
   document.getElementById('kpiRubros').textContent   = rset.size;
   document.getElementById('kpiBranches').textContent = bset.size;
   document.getElementById('kpiAlerts').textContent   = alerts.toLocaleString('es-AR');
+  document.getElementById('kpiEmpresa').textContent  = prods.filter(isSingleCompany).length.toLocaleString('es-AR');
   document.getElementById('resultsCount').textContent = prods.length.toLocaleString('es-AR') + ' producto(s) encontrado(s)';
 }
 
@@ -746,14 +822,18 @@ function renderTable(prods) {
     return (av>bv?1:av<bv?-1:0)*sortDir;
   });
 
-  document.getElementById('tableBody').innerHTML = sorted.map((p,ri) =>
-    `<tr style="${ri%2?'background:#F2F7FF':''}">
+  document.getElementById('tableBody').innerHTML = sorted.map((p,ri) => {
+    const emp = isSingleCompany(p);
+    const rowCls = emp ? 'empresa-row' : '';
+    const rowStyle = emp ? '' : (ri%2 ? 'background:#F2F7FF' : '');
+    const badge = emp ? '<span class="emp-badge">EMPRESA</span>' : '';
+    return `<tr class="${rowCls}" style="${rowStyle}">
       <td>${p.codigo}</td>
-      <td class="art">${p.articulo}</td>
+      <td class="art">${p.articulo}${badge}</td>
       <td style="text-align:center">${p.marca}</td>
       ${active.map(b=>`<td style="padding:2px 4px;text-align:center">${stkCell(p.branch_stocks[b]||0)}</td>`).join('')}
-    </tr>`
-  ).join('');
+    </tr>`;
+  }).join('');
 }
 
 // ── SUMMARY ───────────────────────────────────────────────────────────────────
