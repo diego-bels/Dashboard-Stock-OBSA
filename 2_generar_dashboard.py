@@ -349,9 +349,9 @@ HTML = r"""<!DOCTYPE html>
     <div id="ventasView" style="display:none;flex:1;overflow:hidden;display:none;flex-direction:column">
       <div class="ventas-wrap">
         <div class="ventas-filters">
-          <select id="vFiltroSuc"    onchange="renderVentas()"><option value="">Todas las sucursales</option></select>
-          <select id="vFiltroFam"    onchange="renderVentas()"><option value="">Todas las familias</option></select>
-          <select id="vFiltroRubro"  onchange="renderVentas()"><option value="">Todos los rubros</option></select>
+          <select id="vFiltroSuc"    onchange="refreshVentasDropdowns();renderVentas()"><option value="">Todas las sucursales</option></select>
+          <select id="vFiltroFam"    onchange="refreshVentasDropdowns();renderVentas()"><option value="">Todas las familias</option></select>
+          <select id="vFiltroRubro"  onchange="refreshVentasDropdowns();renderVentas()"><option value="">Todos los rubros</option></select>
           <select id="vFiltroMarca"  onchange="renderVentas()"><option value="">Todas las marcas</option></select>
           <input type="text" id="vFiltroTexto" placeholder="Artículo o código…" oninput="renderVentas()" style="min-width:180px">
           <input type="date" id="vFiltroDesde" onchange="renderVentas()" title="Desde">
@@ -441,29 +441,57 @@ function setTab(tab) {
 
 // ── VENTAS ────────────────────────────────────────────────────────────────────
 function initVentasFiltros() {
-  function fill(id, vals) {
+  // Sucursal se puebla una sola vez (no cascadea)
+  const sels = document.getElementById('vFiltroSuc');
+  [...new Set(VENTAS_HISTORIAL.map(v=>v.sucursal))].sort()
+    .forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sels.appendChild(o); });
+  // Familia, Rubro, Marca se actualizan en cascada via refreshVentasDropdowns()
+  refreshVentasDropdowns();
+}
+
+function refreshVentasDropdowns() {
+  const suc = document.getElementById('vFiltroSuc').value;
+  const fam = document.getElementById('vFiltroFam').value;
+  const rubro = document.getElementById('vFiltroRubro').value;
+
+  // Pool base: filtrado por sucursal (no cascadea desde suc, pero lo consideramos)
+  const base = suc ? VENTAS_HISTORIAL.filter(v => v.sucursal === suc) : VENTAS_HISTORIAL;
+
+  // Familias disponibles (sin filtro de familia ni rubro ni marca)
+  const fams = [...new Set(base.map(v=>v.familia).filter(Boolean))].sort();
+
+  // Rubros disponibles: restringidos por familia seleccionada
+  const rubroPool = fam ? base.filter(v => v.familia === fam) : base;
+  const rubros = [...new Set(rubroPool.map(v=>v.rubro).filter(Boolean))].sort();
+
+  // Marcas disponibles: restringidas por familia + rubro
+  const marcaPool = rubro ? rubroPool.filter(v => v.rubro === rubro) : rubroPool;
+  const marcas = [...new Set(marcaPool.map(v=>v.marca).filter(Boolean))].sort();
+
+  function refill(id, vals, keep) {
     const sel = document.getElementById(id);
-    [...vals].sort().forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+    const cur = keep && sel.value && vals.includes(sel.value) ? sel.value : '';
+    sel.innerHTML = `<option value="">${sel.options[0].text}</option>`;
+    vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; if(v===cur)o.selected=true; sel.appendChild(o); });
   }
-  fill('vFiltroSuc',   new Set(VENTAS_HISTORIAL.map(v=>v.sucursal)));
-  fill('vFiltroFam',   new Set(VENTAS_HISTORIAL.map(v=>v.familia).filter(Boolean)));
-  fill('vFiltroRubro', new Set(VENTAS_HISTORIAL.map(v=>v.rubro).filter(Boolean)));
-  fill('vFiltroMarca', new Set(VENTAS_HISTORIAL.map(v=>v.marca).filter(Boolean)));
+  refill('vFiltroFam',   fams,   true);
+  refill('vFiltroRubro', rubros, true);
+  refill('vFiltroMarca', marcas, true);
 }
 
 function getVentasFiltradas() {
   const suc   = document.getElementById('vFiltroSuc').value;
-  const fam   = document.getElementById('vFiltroFam').value.toLowerCase();
-  const rubro = document.getElementById('vFiltroRubro').value.toLowerCase();
-  const marca = document.getElementById('vFiltroMarca').value.toLowerCase();
+  const fam   = document.getElementById('vFiltroFam').value;
+  const rubro = document.getElementById('vFiltroRubro').value;
+  const marca = document.getElementById('vFiltroMarca').value;
   const texto = document.getElementById('vFiltroTexto').value.toLowerCase().trim();
   const desde = document.getElementById('vFiltroDesde').value;
   const hasta = document.getElementById('vFiltroHasta').value;
   return VENTAS_HISTORIAL.filter(v => {
     if (suc   && v.sucursal !== suc) return false;
-    if (fam   && (v.familia||'').toLowerCase() !== fam)  return false;
-    if (rubro && (v.rubro||'').toLowerCase()   !== rubro) return false;
-    if (marca && (v.marca||'').toLowerCase()   !== marca) return false;
+    if (fam   && (v.familia||'') !== fam)  return false;
+    if (rubro && (v.rubro||'')   !== rubro) return false;
+    if (marca && (v.marca||'')   !== marca) return false;
     if (texto && !v.articulo.toLowerCase().includes(texto) && !v.codigo.includes(texto)) return false;
     if (desde || hasta) {
       const [d,m,a] = v.fecha.split('/');
@@ -515,6 +543,7 @@ function renderVentas() {
 function resetVentasFiltros() {
   ['vFiltroSuc','vFiltroFam','vFiltroRubro','vFiltroMarca','vFiltroTexto','vFiltroDesde','vFiltroHasta']
     .forEach(id => document.getElementById(id).value = '');
+  refreshVentasDropdowns();
   renderVentas();
 }
 
