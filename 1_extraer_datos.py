@@ -37,19 +37,12 @@ SUCURSALES = [v for k, v in DEPOSITOS.items() if k != COL_KEY]
 
 # Familias excluidas del análisis
 FAMILIAS_EXCLUIDAS = {
-    'INDUMENTARIA', 'CALZADO', 'JUGUETERIA', 'INSUMOS',
+    'JUGUETERIA', 'INSUMOS',
     'FOTOGRAFIA', 'FLETES - PROMO REG.', 'BLANCO', 'BAZAR',
 }
 
 # Rubros excluidos del análisis (indumentaria, calzado, internos/seguros)
 RUBROS_EXCLUIDOS = {
-    # Indumentaria
-    'ACC.DE INDUMENTARIA','BERMUDA','BODY','BUZO','CALZA','CAMISA','CAMISETAS',
-    'CAMPERA','CHALECO','CHOMBA','CONJUNTO DEP.','GORRA','GUANTE','GUARDAPOLVO',
-    'JEANS','MEDIAS','PANTALON','POLAR','POLERA','POLLERA','REMERA','ROPA INTERIOR',
-    'SHORT','SWEATER','TOP','UNIFORMES',
-    # Calzado
-    'BOTAS','BOTINES','OJOTAS','SANDALIA','ZAPATILLAS','ZAPATOS',
     # Seguros / conceptos internos
     'BOLSAS BARBIERI','FLETE - CONCEPTOS VARIOS','GARANTIAS',
     'INSUMOS INTERNOS','PROMO REGALO','REGALOS EMPRESARIALES',
