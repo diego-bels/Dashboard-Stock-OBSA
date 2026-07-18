@@ -275,15 +275,17 @@ if prev_path.exists():
                     and stk_act == 0 and col_act == 0):
                 # Info del snapshot anterior (más confiable: el producto puede no estar en el actual)
                 info = prev_entry if isinstance(prev_entry, dict) and 'articulo' in prev_entry else act_entry
+                total_prev = sum(stocks_prev.get(s, 0) for s in SUCURSALES)
                 ventas_nuevas.append({
-                    'fecha':    fecha_str,
-                    'hora':     hora_str,
-                    'sucursal': suc,
-                    'codigo':   codigo,
-                    'articulo': info.get('articulo', ''),
-                    'rubro':    info.get('rubro', ''),
-                    'familia':  info.get('familia', ''),
-                    'marca':    info.get('marca', ''),
+                    'fecha':         fecha_str,
+                    'hora':          hora_str,
+                    'sucursal':      suc,
+                    'codigo':        codigo,
+                    'articulo':      info.get('articulo', ''),
+                    'rubro':         info.get('rubro', ''),
+                    'familia':       info.get('familia', ''),
+                    'marca':         info.get('marca', ''),
+                    'empresa_last':  total_prev == 1,
                 })
 
     if ventas_nuevas:

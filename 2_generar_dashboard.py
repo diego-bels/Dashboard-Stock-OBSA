@@ -349,10 +349,13 @@ HTML = r"""<!DOCTYPE html>
     <div id="ventasView" style="display:none;flex:1;overflow:hidden;display:none;flex-direction:column">
       <div class="ventas-wrap">
         <div class="ventas-filters">
-          <select id="vFiltroSuc" onchange="renderVentas()"><option value="">Todas las sucursales</option></select>
+          <select id="vFiltroSuc"    onchange="renderVentas()"><option value="">Todas las sucursales</option></select>
+          <select id="vFiltroFam"    onchange="renderVentas()"><option value="">Todas las familias</option></select>
+          <select id="vFiltroRubro"  onchange="renderVentas()"><option value="">Todos los rubros</option></select>
+          <select id="vFiltroMarca"  onchange="renderVentas()"><option value="">Todas las marcas</option></select>
+          <input type="text" id="vFiltroTexto" placeholder="Artículo o código…" oninput="renderVentas()" style="min-width:180px">
           <input type="date" id="vFiltroDesde" onchange="renderVentas()" title="Desde">
           <input type="date" id="vFiltroHasta" onchange="renderVentas()" title="Hasta">
-          <input type="text" id="vFiltroTexto" placeholder="Buscar artículo, código o marca…" oninput="renderVentas()" style="min-width:220px">
           <button class="btn btn-outline" onclick="resetVentasFiltros()">Limpiar</button>
         </div>
         <div class="ventas-summary" id="ventasSummary"></div>
@@ -438,66 +441,80 @@ function setTab(tab) {
 
 // ── VENTAS ────────────────────────────────────────────────────────────────────
 function initVentasFiltros() {
-  const sucursales = [...new Set(VENTAS_HISTORIAL.map(v=>v.sucursal))].sort();
-  const sel = document.getElementById('vFiltroSuc');
-  sucursales.forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+  function fill(id, vals) {
+    const sel = document.getElementById(id);
+    [...vals].sort().forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sel.appendChild(o); });
+  }
+  fill('vFiltroSuc',   new Set(VENTAS_HISTORIAL.map(v=>v.sucursal)));
+  fill('vFiltroFam',   new Set(VENTAS_HISTORIAL.map(v=>v.familia).filter(Boolean)));
+  fill('vFiltroRubro', new Set(VENTAS_HISTORIAL.map(v=>v.rubro).filter(Boolean)));
+  fill('vFiltroMarca', new Set(VENTAS_HISTORIAL.map(v=>v.marca).filter(Boolean)));
 }
 
 function getVentasFiltradas() {
   const suc   = document.getElementById('vFiltroSuc').value;
+  const fam   = document.getElementById('vFiltroFam').value.toLowerCase();
+  const rubro = document.getElementById('vFiltroRubro').value.toLowerCase();
+  const marca = document.getElementById('vFiltroMarca').value.toLowerCase();
+  const texto = document.getElementById('vFiltroTexto').value.toLowerCase().trim();
   const desde = document.getElementById('vFiltroDesde').value;
   const hasta = document.getElementById('vFiltroHasta').value;
-  const texto = document.getElementById('vFiltroTexto').value.toLowerCase().trim();
   return VENTAS_HISTORIAL.filter(v => {
-    if (suc && v.sucursal !== suc) return false;
+    if (suc   && v.sucursal !== suc) return false;
+    if (fam   && (v.familia||'').toLowerCase() !== fam)  return false;
+    if (rubro && (v.rubro||'').toLowerCase()   !== rubro) return false;
+    if (marca && (v.marca||'').toLowerCase()   !== marca) return false;
+    if (texto && !v.articulo.toLowerCase().includes(texto) && !v.codigo.includes(texto)) return false;
     if (desde || hasta) {
-      // fecha en formato dd/mm/yyyy → convertir para comparar
       const [d,m,a] = v.fecha.split('/');
       const iso = `${a}-${m}-${d}`;
       if (desde && iso < desde) return false;
       if (hasta && iso > hasta) return false;
     }
-    if (texto && !v.articulo.toLowerCase().includes(texto) &&
-        !v.codigo.includes(texto) && !v.marca.toLowerCase().includes(texto)) return false;
     return true;
   });
 }
 
 function renderVentas() {
   const ventas = getVentasFiltradas();
-  // KPIs
+  const empCount = ventas.filter(v=>v.empresa_last).length;
   const sucSet = new Set(ventas.map(v=>v.sucursal));
   document.getElementById('ventasSummary').innerHTML =
     `<div class="ventas-kpi"><b>${ventas.length.toLocaleString('es-AR')}</b>Registros</div>
      <div class="ventas-kpi"><b>${sucSet.size}</b>Sucursales</div>
-     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>`;
-  // Tabla
+     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>
+     ${empCount ? `<div class="ventas-kpi" style="background:#FFF0F0;color:var(--red)"><b>${empCount}</b>Única unidad en empresa 🔴</div>` : ''}`;
   if (!ventas.length) {
     document.getElementById('ventasTable').innerHTML =
       '<div class="no-results"><div class="icon">📭</div><div>Sin ventas detectadas para los filtros aplicados.</div></div>';
     return;
   }
-  const cols = ['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca'];
+  const cols = ['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca',''];
   document.getElementById('ventasTable').innerHTML = `
     <table style="border-collapse:collapse;width:100%;font-size:11px">
       <thead><tr>${cols.map(c=>`<th style="background:var(--navy);color:#fff;padding:6px 8px;text-align:left;white-space:nowrap">${c}</th>`).join('')}</tr></thead>
-      <tbody>${ventas.map((v,i)=>`<tr style="${i%2?'background:#F2F7FF':''}">
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.fecha}</td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border);font-weight:bold">${v.sucursal}</td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.codigo}</td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border);max-width:260px">${v.articulo}</td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border)"><span class="rubro-tag">${v.rubro}</span></td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.familia}</td>
-        <td style="padding:4px 8px;border-bottom:1px solid var(--border)">${v.marca}</td>
-      </tr>`).join('')}</tbody>
+      <tbody>${ventas.map((v,i) => {
+        const emp = v.empresa_last;
+        const bg = emp ? 'background:#FFF5F5' : (i%2 ? 'background:#F2F7FF' : '');
+        const bd = emp ? 'border-left:3px solid var(--red)' : '';
+        const td = `padding:4px 8px;border-bottom:1px solid var(--border)`;
+        return `<tr style="${bg};${bd}">
+          <td style="${td}">${v.fecha}</td>
+          <td style="${td};font-weight:bold">${v.sucursal}</td>
+          <td style="${td}">${v.codigo}</td>
+          <td style="${td};max-width:260px">${v.articulo}</td>
+          <td style="${td}"><span class="rubro-tag">${v.rubro}</span></td>
+          <td style="${td}">${v.familia}</td>
+          <td style="${td}">${v.marca}</td>
+          <td style="${td};text-align:center">${emp ? '<span class="emp-badge">EMPRESA</span>' : ''}</td>
+        </tr>`;
+      }).join('')}</tbody>
     </table>`;
 }
 
 function resetVentasFiltros() {
-  document.getElementById('vFiltroSuc').value = '';
-  document.getElementById('vFiltroDesde').value = '';
-  document.getElementById('vFiltroHasta').value = '';
-  document.getElementById('vFiltroTexto').value = '';
+  ['vFiltroSuc','vFiltroFam','vFiltroRubro','vFiltroMarca','vFiltroTexto','vFiltroDesde','vFiltroHasta']
+    .forEach(id => document.getElementById(id).value = '');
   renderVentas();
 }
 
@@ -505,10 +522,10 @@ function exportVentas() {
   const ventas = getVentasFiltradas();
   if (!ventas.length) { alert('Sin datos para exportar.'); return; }
   const wb = XLSX.utils.book_new();
-  const rows = [['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca']];
-  ventas.forEach(v => rows.push([v.fecha,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca]));
+  const rows = [['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca','Única unidad empresa']];
+  ventas.forEach(v => rows.push([v.fecha,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca,v.empresa_last?'SÍ':'']));
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:8},{wch:14},{wch:10},{wch:50},{wch:18},{wch:16},{wch:14}];
+  ws['!cols'] = [{wch:12},{wch:16},{wch:10},{wch:50},{wch:18},{wch:16},{wch:14},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws, 'Ventas Última Unidad');
   XLSX.writeFile(wb, `Ventas_Ultima_Unidad_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
