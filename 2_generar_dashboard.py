@@ -317,13 +317,13 @@ HTML = r"""<!DOCTYPE html>
     <div class="empresa-panel" id="empresaPanel" style="display:none">
       <div class="empresa-header" onclick="toggleEmpresaPanel()">
         <span style="font-size:15px">🔴</span>
-        <span class="empresa-title">Última unidad en toda la empresa</span>
+        <span class="empresa-title" id="empresaTitle">Última unidad en toda la empresa</span>
         <span class="empresa-badge-count" id="empresaCount">0</span>
         <span style="font-size:11px;color:var(--red);margin-left:6px" id="empresaChevron">▼</span>
       </div>
       <div class="empresa-body" id="empresaBody">
         <table class="empresa-table">
-          <thead><tr><th>Código</th><th>Artículo</th><th>Rubro</th><th>Marca</th><th>Sucursal</th></tr></thead>
+          <thead id="empresaThead"><tr><th>Código</th><th>Artículo</th><th>Rubro</th><th>Marca</th><th>Sucursal</th></tr></thead>
           <tbody id="empresaTbody"></tbody>
         </table>
       </div>
@@ -505,13 +505,12 @@ function getVentasFiltradas() {
 
 function renderVentas() {
   const ventas = getVentasFiltradas();
-  const empCount = ventas.filter(v=>v.empresa_last).length;
   const sucSet = new Set(ventas.map(v=>v.sucursal));
+  updateEmpresaPanelVentas(ventas);
   document.getElementById('ventasSummary').innerHTML =
     `<div class="ventas-kpi"><b>${ventas.length.toLocaleString('es-AR')}</b>Registros</div>
      <div class="ventas-kpi"><b>${sucSet.size}</b>Sucursales</div>
-     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>
-     ${empCount ? `<div class="ventas-kpi" style="background:#FFF0F0;color:var(--red)"><b>${empCount}</b>Única unidad en empresa 🔴</div>` : ''}`;
+     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>`;
   if (!ventas.length) {
     document.getElementById('ventasTable').innerHTML =
       '<div class="no-results"><div class="icon">📭</div><div>Sin ventas detectadas para los filtros aplicados.</div></div>';
@@ -781,31 +780,44 @@ function toggleEmpresaPanel() {
 }
 
 function updateEmpresaPanel(prods) {
-  // Para sucursales: filtrar por la sucursal activa
+  // Modo STOCK: productos con única unidad en empresa
   const checkProds = currentSucursal
     ? prods.filter(p => (p.branch_stocks[currentSucursal]||0) > 0)
     : prods;
   const singles = checkProds.filter(isSingleCompany);
 
   const panel = document.getElementById('empresaPanel');
+  document.getElementById('empresaTitle').textContent = 'Última unidad en toda la empresa — stock actual';
   document.getElementById('empresaCount').textContent = singles.length;
 
   if (!singles.length) { panel.style.display = 'none'; return; }
   panel.style.display = '';
 
-  // Tabla del panel (solo admin ve el apartado completo)
   if (!currentSucursal) {
+    document.getElementById('empresaThead').innerHTML =
+      '<tr><th>Código</th><th>Artículo</th><th>Rubro</th><th>Marca</th><th>Sucursal</th></tr>';
     document.getElementById('empresaTbody').innerHTML = singles.map(p => {
       const suc = Object.entries(p.branch_stocks).find(([,v])=>v===1)?.[0] || '';
-      return `<tr>
-        <td>${p.codigo}</td>
-        <td class="art">${p.articulo}</td>
-        <td>${p.rubro}</td>
-        <td>${p.marca}</td>
-        <td><b>${suc}</b></td>
-      </tr>`;
+      return `<tr><td>${p.codigo}</td><td class="art">${p.articulo}</td><td>${p.rubro}</td><td>${p.marca}</td><td><b>${suc}</b></td></tr>`;
     }).join('');
   }
+}
+
+function updateEmpresaPanelVentas(ventas) {
+  // Modo VENTAS: ventas donde era la única unidad en empresa
+  const singles = ventas.filter(v => v.empresa_last);
+  const panel = document.getElementById('empresaPanel');
+  document.getElementById('empresaTitle').textContent = 'Ventas de última unidad en toda la empresa';
+  document.getElementById('empresaCount').textContent = singles.length;
+
+  if (!singles.length) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+
+  document.getElementById('empresaThead').innerHTML =
+    '<tr><th>Fecha</th><th>Sucursal</th><th>Código</th><th>Artículo</th><th>Rubro</th><th>Marca</th></tr>';
+  document.getElementById('empresaTbody').innerHTML = singles.map(v =>
+    `<tr><td>${v.fecha}</td><td><b>${v.sucursal}</b></td><td>${v.codigo}</td><td class="art">${v.articulo}</td><td>${v.rubro}</td><td>${v.marca}</td></tr>`
+  ).join('');
 }
 
 function applyFilters() {
