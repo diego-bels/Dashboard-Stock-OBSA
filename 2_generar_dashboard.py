@@ -1,4 +1,4 @@
-"""
+﻿"""
 Paso 2: Lee data.json y genera Dashboard.html interactivo multi-rubro.
 """
 import json, sys
@@ -25,7 +25,17 @@ n_rubros = len(data.get('rubros', []))
 # usuario → { password, sucursal }
 # sucursal: nombre exacto del depósito, o None para ver TODAS (admin)
 CREDENCIALES = {
-    'admin':        {'password': 'obsa2025',      'sucursal': None},
+    'admin':        {'password': 'obsa2025',      'sucursal': None,  'familias': None, 'titulo': None},
+    'hogar':        {'password': 'hogar2025',     'sucursal': None,  'familias': [
+                        'APARATOS DE GIMNASIA','AUDIO','BEBES','CAMPING Y JARDIN',
+                        'CLIMATIZACION','COLCHONES Y SOMMIERS','EQUIPAMIENTOS COMERCIALES',
+                        'FOTOGRAFIA','HERRAMIENTAS','HOGAR','INFORMATICA','JUGUETERIA',
+                        'MUEBLES','MUEBLES DE OFICINA','PEQUEÑOS ELECTRODOMESTICOS',
+                        'RODADOS','T.V. / DVD','TELEFONIA','VIDEOJUEGOS',
+                    ], 'titulo': 'Dashboard Ú.UNIDAD — Hogar'},
+    'indumen':      {'password': 'indumen2025',   'sucursal': None,  'familias': [
+                        'INDUMENTARIA','CALZADO','BAZAR','BLANCO',
+                    ], 'titulo': 'Dashboard Ú.UNIDAD — Indumen/Calz/Otros'},
     '25demayo':     {'password': 'mayo2025',       'sucursal': '25 de Mayo'},
     'tafi':         {'password': 'tafi2025',       'sucursal': 'Tafi del Valle'},
     'banda':        {'password': 'banda2025',      'sucursal': 'Banda'},
@@ -175,12 +185,29 @@ HTML = r"""<!DOCTYPE html>
 
   /* PANEL VENTAS */
   .ventas-wrap{flex:1;overflow:auto;padding:14px}
-  .ventas-filters{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center}
-  .ventas-filters select,.ventas-filters input{border:1px solid var(--border);border-radius:5px;padding:5px 8px;font-size:12px;color:var(--text)}
-  .ventas-filters select:focus,.ventas-filters input:focus{outline:none;border-color:var(--blue)}
   .ventas-summary{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
   .ventas-kpi{background:#E8F0FE;border-radius:7px;padding:6px 14px;font-size:12px;color:var(--navy)}
   .ventas-kpi b{font-size:16px;display:block}
+
+  /* DATE RANGE PICKER */
+  .drp-trigger{background:#E8F0FE;color:var(--navy);border:1px solid var(--border);border-radius:7px;padding:7px 10px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px;width:100%;cursor:pointer;white-space:nowrap}
+  .drp-trigger:hover{background:#d0defa}
+  .drp-wrap{position:relative}
+  .drp-panel{position:fixed;z-index:9999;background:#fff;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.22);display:none;flex-direction:column;border:1px solid var(--border)}
+  .drp-right{padding:12px;display:flex;flex-direction:column;gap:8px}
+  .drp-cals{display:flex;gap:16px}
+  .drp-mhdr{display:flex;justify-content:space-between;align-items:center;font-weight:700;font-size:12px;margin-bottom:5px;color:var(--navy)}
+  .drp-grid{display:grid;grid-template-columns:repeat(7,30px);gap:2px}
+  .drp-dh{width:30px;height:22px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#90a4ae}
+  .drp-day{width:30px;height:30px;display:flex;align-items:center;justify-content:center;font-size:11px;border-radius:50%;cursor:pointer;transition:background .1s}
+  .drp-day:hover{background:#e8eaf6}
+  .drp-day.sel{background:var(--navy);color:#fff;font-weight:700}
+  .drp-day.in-range{background:#E8F0FE;border-radius:0}
+  .drp-day.today{font-weight:700;text-decoration:underline}
+  .drp-foot{display:flex;justify-content:flex-end;gap:6px;border-top:1px solid #e8eaf6;padding-top:8px}
+  .drp-foot button{border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600}
+  .drp-cancel{background:#f5f5f5;color:#555}
+  .drp-apply{background:var(--navy);color:#fff}
 
   /* MODAL */
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;align-items:center;justify-content:center}
@@ -255,6 +282,29 @@ HTML = r"""<!DOCTYPE html>
     <div class="filter-section">
       <div class="filter-label">Código / Descripción</div>
       <input class="search-box" id="searchInput" type="text" placeholder="Código o artículo…" oninput="applyFilters()">
+    </div>
+
+    <div class="filter-section" id="fechaSection" style="display:none">
+      <div class="filter-label">Período</div>
+      <div class="drp-wrap" id="drpWrap">
+        <button class="drp-trigger" id="drpTrigger" onclick="drpToggle()">
+          📅 <span id="drpLabel">Seleccionar fechas</span>
+        </button>
+        <div class="drp-panel" id="drpPanel" onclick="event.stopPropagation()">
+          <div class="drp-right">
+            <div class="drp-cals">
+              <div id="drpCal0"></div>
+            </div>
+            <div class="drp-foot">
+              <button class="drp-cancel" onclick="drpCancel()">Cancelar</button>
+              <button class="drp-apply"  onclick="drpApply()">Aplicar</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- inputs ocultos que leen el resto del código -->
+      <input type="hidden" id="filtroDesde">
+      <input type="hidden" id="filtroHasta">
     </div>
 
     <div class="filter-section">
@@ -348,16 +398,6 @@ HTML = r"""<!DOCTYPE html>
     <!-- PANEL VENTAS (solo admin) -->
     <div id="ventasView" style="display:none;flex:1;overflow:hidden;display:none;flex-direction:column">
       <div class="ventas-wrap">
-        <div class="ventas-filters">
-          <select id="vFiltroSuc"    onchange="refreshVentasDropdowns();renderVentas()"><option value="">Todas las sucursales</option></select>
-          <select id="vFiltroFam"    onchange="refreshVentasDropdowns();renderVentas()"><option value="">Todas las familias</option></select>
-          <select id="vFiltroRubro"  onchange="refreshVentasDropdowns();renderVentas()"><option value="">Todos los rubros</option></select>
-          <select id="vFiltroMarca"  onchange="renderVentas()"><option value="">Todas las marcas</option></select>
-          <input type="text" id="vFiltroTexto" placeholder="Artículo o código…" oninput="renderVentas()" style="min-width:180px">
-          <input type="date" id="vFiltroDesde" onchange="renderVentas()" title="Desde">
-          <input type="date" id="vFiltroHasta" onchange="renderVentas()" title="Hasta">
-          <button class="btn btn-outline" onclick="resetVentasFiltros()">Limpiar</button>
-        </div>
         <div class="ventas-summary" id="ventasSummary"></div>
         <div id="ventasTable"></div>
       </div>
@@ -375,7 +415,7 @@ const CREDS = CREDS_PLACEHOLDER;
 
 let selectedBranches = new Set(ALL_BRANCHES);
 let sortCol = null, sortDir = 1, currentView = 'table';
-let currentUser = null, currentSucursal = null;
+let currentUser = null, currentSucursal = null, currentFamilias = null;
 
 // ── LOGIN ─────────────────────────────────────────────────────────────────────
 function doLogin() {
@@ -389,10 +429,14 @@ function doLogin() {
   }
   currentUser = user;
   currentSucursal = cred.sucursal;
+  currentFamilias = cred.familias || null;
   document.getElementById('loginOverlay').classList.add('hidden');
   document.getElementById('loginError').textContent = '';
-  const label = currentSucursal ? currentSucursal : 'Administrador (todas las sucursales)';
+  const label = currentSucursal
+    ? currentSucursal
+    : (cred.titulo || 'Administrador (todas las sucursales)');
   document.getElementById('sessionInfo').textContent = label;
+  if (cred.titulo) document.title = cred.titulo;
   // Si es sucursal específica: filtrar, ocultar selector y card de sucursales
   if (currentSucursal) {
     selectedBranches = new Set([currentSucursal]);
@@ -403,7 +447,6 @@ function doLogin() {
     if (VENTAS_HISTORIAL.length > 0) {
       document.getElementById('tabVentas').style.display = '';
     }
-    initVentasFiltros();
   }
   refreshAcValues();
   initFilters();
@@ -411,7 +454,8 @@ function doLogin() {
 }
 
 function doLogout() {
-  currentUser = null; currentSucursal = null;
+  currentUser = null; currentSucursal = null; currentFamilias = null;
+  document.title = 'Dashboard Stock — Última Unidad Sin Reposición';
   selectedBranches = new Set(ALL_BRANCHES);
   document.getElementById('loginUser').value = '';
   document.getElementById('loginPass').value = '';
@@ -436,59 +480,28 @@ function setTab(tab) {
   document.getElementById('summaryView').style.display   = 'none';
   document.getElementById('ventasView').style.display    = tab==='ventas' ? 'flex' : 'none';
   document.getElementById('kpiProds').closest('.kpi-bar').style.display = tab==='stock' ? '' : 'none';
-  if (tab==='ventas') renderVentas();
+  document.getElementById('fechaSection').style.display  = tab==='ventas' ? '' : 'none';
+  if (tab==='ventas') { drpInit(); renderVentas(); }
 }
 
 // ── VENTAS ────────────────────────────────────────────────────────────────────
-function initVentasFiltros() {
-  // Sucursal se puebla una sola vez (no cascadea)
-  const sels = document.getElementById('vFiltroSuc');
-  [...new Set(VENTAS_HISTORIAL.map(v=>v.sucursal))].sort()
-    .forEach(s => { const o=document.createElement('option'); o.value=s; o.textContent=s; sels.appendChild(o); });
-  // Familia, Rubro, Marca se actualizan en cascada via refreshVentasDropdowns()
-  refreshVentasDropdowns();
-}
-
-function refreshVentasDropdowns() {
-  const suc = document.getElementById('vFiltroSuc').value;
-  const fam = document.getElementById('vFiltroFam').value;
-  const rubro = document.getElementById('vFiltroRubro').value;
-
-  // Pool base: filtrado por sucursal (no cascadea desde suc, pero lo consideramos)
-  const base = suc ? VENTAS_HISTORIAL.filter(v => v.sucursal === suc) : VENTAS_HISTORIAL;
-
-  // Familias disponibles (sin filtro de familia ni rubro ni marca)
-  const fams = [...new Set(base.map(v=>v.familia).filter(Boolean))].sort();
-
-  // Rubros disponibles: restringidos por familia seleccionada
-  const rubroPool = fam ? base.filter(v => v.familia === fam) : base;
-  const rubros = [...new Set(rubroPool.map(v=>v.rubro).filter(Boolean))].sort();
-
-  // Marcas disponibles: restringidas por familia + rubro
-  const marcaPool = rubro ? rubroPool.filter(v => v.rubro === rubro) : rubroPool;
-  const marcas = [...new Set(marcaPool.map(v=>v.marca).filter(Boolean))].sort();
-
-  function refill(id, vals, keep) {
-    const sel = document.getElementById(id);
-    const cur = keep && sel.value && vals.includes(sel.value) ? sel.value : '';
-    sel.innerHTML = `<option value="">${sel.options[0].text}</option>`;
-    vals.forEach(v => { const o=document.createElement('option'); o.value=v; o.textContent=v; if(v===cur)o.selected=true; sel.appendChild(o); });
-  }
-  refill('vFiltroFam',   fams,   true);
-  refill('vFiltroRubro', rubros, true);
-  refill('vFiltroMarca', marcas, true);
-}
 
 function getVentasFiltradas() {
-  const suc   = document.getElementById('vFiltroSuc').value;
-  const fam   = document.getElementById('vFiltroFam').value;
-  const rubro = document.getElementById('vFiltroRubro').value;
-  const marca = document.getElementById('vFiltroMarca').value;
-  const texto = document.getElementById('vFiltroTexto').value.toLowerCase().trim();
-  const desde = document.getElementById('vFiltroDesde').value;
-  const hasta = document.getElementById('vFiltroHasta').value;
+  // Lee filtros del sidebar unificado
+  const texto = (document.getElementById('searchInput').value || '').toLowerCase().trim();
+  const fam   = acExact.familia ? document.getElementById('familiaInput').value.trim() : '';
+  const rubro = acExact.rubro   ? document.getElementById('rubroInput').value.trim()   : '';
+  const marca = acExact.marca   ? document.getElementById('marcaInput').value.trim()   : '';
+  const desde = document.getElementById('filtroDesde').value;
+  const hasta = document.getElementById('filtroHasta').value;
+  // Sucursal: si hay una sola seleccionada la usamos como filtro
+  const sucFiltro = (currentSucursal && !currentSucursal.includes('todas')) ? currentSucursal : '';
+  const sucSet = new Set([...selectedBranches]);
+
   return VENTAS_HISTORIAL.filter(v => {
-    if (suc   && v.sucursal !== suc) return false;
+    if (currentFamilias && !currentFamilias.includes((v.familia||'').toUpperCase())) return false;
+    if (sucFiltro && v.sucursal !== sucFiltro) return false;
+    if (!sucFiltro && sucSet.size < ALL_BRANCHES.length && !sucSet.has(v.sucursal)) return false;
     if (fam   && (v.familia||'') !== fam)  return false;
     if (rubro && (v.rubro||'')   !== rubro) return false;
     if (marca && (v.marca||'')   !== marca) return false;
@@ -506,17 +519,20 @@ function getVentasFiltradas() {
 function renderVentas() {
   const ventas = getVentasFiltradas();
   const sucSet = new Set(ventas.map(v=>v.sucursal));
+  buildBranchList();
   updateEmpresaPanelVentas(ventas);
+  const totalUnidades = ventas.reduce((s,v) => s + (v.unidades||1), 0);
   document.getElementById('ventasSummary').innerHTML =
     `<div class="ventas-kpi"><b>${ventas.length.toLocaleString('es-AR')}</b>Registros</div>
      <div class="ventas-kpi"><b>${sucSet.size}</b>Sucursales</div>
-     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>`;
+     <div class="ventas-kpi"><b>${new Set(ventas.map(v=>v.codigo)).size}</b>Productos distintos</div>
+     <div class="ventas-kpi"><b>${totalUnidades.toLocaleString('es-AR')}</b>Unidades vendidas</div>`;
   if (!ventas.length) {
     document.getElementById('ventasTable').innerHTML =
       '<div class="no-results"><div class="icon">📭</div><div>Sin ventas detectadas para los filtros aplicados.</div></div>';
     return;
   }
-  const cols = ['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca',''];
+  const cols = ['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca','Uds.',''];
   document.getElementById('ventasTable').innerHTML = `
     <table style="border-collapse:collapse;width:100%;font-size:11px">
       <thead><tr>${cols.map(c=>`<th style="background:var(--navy);color:#fff;padding:6px 8px;text-align:left;white-space:nowrap">${c}</th>`).join('')}</tr></thead>
@@ -533,27 +549,22 @@ function renderVentas() {
           <td style="${td}"><span class="rubro-tag">${v.rubro}</span></td>
           <td style="${td}">${v.familia}</td>
           <td style="${td}">${v.marca}</td>
+          <td style="${td};text-align:center;font-weight:bold">${v.unidades||1}</td>
           <td style="${td};text-align:center">${emp ? '<span class="emp-badge">EMPRESA</span>' : ''}</td>
         </tr>`;
       }).join('')}</tbody>
     </table>`;
 }
 
-function resetVentasFiltros() {
-  ['vFiltroSuc','vFiltroFam','vFiltroRubro','vFiltroMarca','vFiltroTexto','vFiltroDesde','vFiltroHasta']
-    .forEach(id => document.getElementById(id).value = '');
-  refreshVentasDropdowns();
-  renderVentas();
-}
 
 function exportVentas() {
   const ventas = getVentasFiltradas();
   if (!ventas.length) { alert('Sin datos para exportar.'); return; }
   const wb = XLSX.utils.book_new();
-  const rows = [['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca','Única unidad empresa']];
-  ventas.forEach(v => rows.push([v.fecha,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca,v.empresa_last?'SÍ':'']));
+  const rows = [['Fecha','Sucursal','Código','Artículo','Rubro','Familia','Marca','Uds.','Única unidad empresa']];
+  ventas.forEach(v => rows.push([v.fecha,v.sucursal,v.codigo,v.articulo,v.rubro,v.familia,v.marca,v.unidades||1,v.empresa_last?'SÍ':'']));
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:12},{wch:16},{wch:10},{wch:50},{wch:18},{wch:16},{wch:14},{wch:20}];
+  ws['!cols'] = [{wch:12},{wch:16},{wch:10},{wch:50},{wch:18},{wch:16},{wch:14},{wch:7},{wch:20}];
   XLSX.utils.book_append_sheet(wb, ws, 'Ventas Última Unidad');
   XLSX.writeFile(wb, `Ventas_Ultima_Unidad_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
@@ -564,11 +575,17 @@ function initFilters() { buildBranchList(); }
 function buildBranchList(filteredProds) {
   const el = document.getElementById('branchList');
   el.innerHTML = '';
-  const prods = filteredProds || PRODUCTS;
   const counts = {};
-  prods.forEach(p => ALL_BRANCHES.forEach(b => {
-    if ((p.branch_stocks[b]||0) === 1) counts[b] = (counts[b]||0) + 1;
-  }));
+  if (currentTab === 'ventas') {
+    // Contar ventas del período filtrado por sucursal
+    const ventas = getVentasFiltradas();
+    ventas.forEach(v => { counts[v.sucursal] = (counts[v.sucursal]||0) + 1; });
+  } else {
+    const prods = filteredProds || PRODUCTS;
+    prods.forEach(p => ALL_BRANCHES.forEach(b => {
+      if ((p.branch_stocks[b]||0) === 1) counts[b] = (counts[b]||0) + 1;
+    }));
+  }
   ALL_BRANCHES.forEach(branch => {
     const cnt = counts[branch] || 0;
     const safe = branch.replace(/'/g,"\\'");
@@ -620,9 +637,10 @@ const AC_FIELDS = {
 
 // Recalcula las opciones disponibles según los productos con stock en la sucursal activa
 function refreshAcValues() {
-  const pool = currentSucursal
+  let pool = currentSucursal
     ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0)
     : PRODUCTS;
+  if (currentFamilias) pool = pool.filter(p => currentFamilias.includes((p.familia||'').toUpperCase()));
   AC_FIELDS.familia.values = [...new Set(pool.map(p=>p.familia).filter(Boolean))].sort();
   AC_FIELDS.marca.values   = [...new Set(pool.map(p=>p.marca).filter(Boolean))].sort();
   AC_FIELDS.rubro.values   = [...new Set(pool.map(p=>p.rubro).filter(Boolean))].sort();
@@ -645,9 +663,10 @@ function acHighlight(q, text) {
 
 // Devuelve el pool de productos activo según familia+rubro seleccionados
 function acBasePool() {
-  const base = currentSucursal
+  let base = currentSucursal
     ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0)
     : PRODUCTS;
+  if (currentFamilias) base = base.filter(p => currentFamilias.includes((p.familia||'').toUpperCase()));
   const familiaVal = document.getElementById('familiaInput').value.trim();
   const rubroVal   = document.getElementById('rubroInput').value.trim();
   return base.filter(p =>
@@ -658,12 +677,14 @@ function acBasePool() {
 
 function acGetPoolFor(field) {
   if (field === 'familia') {
-    const base = currentSucursal ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0) : PRODUCTS;
+    let base = currentSucursal ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0) : PRODUCTS;
+    if (currentFamilias) base = base.filter(p => currentFamilias.includes((p.familia||'').toUpperCase()));
     return [...new Set(base.map(p=>p.familia).filter(Boolean))].sort();
   }
   if (field === 'rubro') {
     const familiaVal = document.getElementById('familiaInput').value.trim();
-    const base = currentSucursal ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0) : PRODUCTS;
+    let base = currentSucursal ? PRODUCTS.filter(p => (p.branch_stocks[currentSucursal]||0) > 0) : PRODUCTS;
+    if (currentFamilias) base = base.filter(p => currentFamilias.includes((p.familia||'').toUpperCase()));
     const pool = familiaVal ? base.filter(p => acExact.familia ? p.familia === familiaVal : p.familia.toLowerCase().includes(familiaVal.toLowerCase())) : base;
     return [...new Set(pool.map(p=>p.rubro).filter(Boolean))].sort();
   }
@@ -753,11 +774,11 @@ function getFilteredProducts() {
   const marca   = document.getElementById('marcaInput').value.toLowerCase().trim();
 
   return PRODUCTS.filter(p => {
+    if (currentFamilias && !currentFamilias.includes(p.familia.toUpperCase())) return false;
     if (search  && !p.codigo.toLowerCase().includes(search)  && !p.articulo.toLowerCase().includes(search))  return false;
     if (rubro)   { const rv = p.rubro.toLowerCase();   if (acExact.rubro   ? rv !== rubro   : !rv.includes(rubro))   return false; }
     if (familia) { const fv = p.familia.toLowerCase(); if (acExact.familia ? fv !== familia : !fv.includes(familia)) return false; }
     if (marca)   { const mv = p.marca.toLowerCase();   if (acExact.marca   ? mv !== marca   : !mv.includes(marca))   return false; }
-    // Solo mostrar productos con stock > 0 en al menos una sucursal seleccionada
     if (currentSucursal) {
       if ((p.branch_stocks[currentSucursal] || 0) === 0) return false;
     } else {
@@ -821,6 +842,7 @@ function updateEmpresaPanelVentas(ventas) {
 }
 
 function applyFilters() {
+  if (currentTab === 'ventas') { renderVentas(); return; }
   const prods = getFilteredProducts();
   updateKPIs(prods);
   buildBranchList(prods);
@@ -953,9 +975,119 @@ function exportStock() {
   XLSX.writeFile(wb, `Stock_Ultima_Unidad_${label}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
+// ── DATE RANGE PICKER ─────────────────────────────────────────────────────────
+const DRP_MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const DRP_DIAS  = ['Lu','Ma','Mi','Ju','Vi','Sa','Do'];
+const TODAY_ISO = new Date().toISOString().slice(0,10);
+let drpFrom='', drpTo='', drpSelecting=false, drpViewYear, drpViewMonth;
+
+function drpInit() {
+  const d = new Date();
+  drpViewYear = d.getFullYear(); drpViewMonth = d.getMonth();
+  drpRender();
+}
+function drpToggle() {
+  const p = document.getElementById('drpPanel');
+  const open = p.style.display === 'flex';
+  if (open) { p.style.display = 'none'; return; }
+  const btn = document.getElementById('drpTrigger');
+  const rect = btn.getBoundingClientRect();
+  p.style.top  = (rect.bottom + 6) + 'px';
+  p.style.left = rect.left + 'px';
+  p.style.display = 'flex';
+  drpFrom = document.getElementById('filtroDesde').value || '';
+  drpTo   = document.getElementById('filtroHasta').value || '';
+  drpSelecting = false;
+  drpRender();
+}
+function drpClose() { document.getElementById('drpPanel').style.display = 'none'; }
+function drpApply() {
+  document.getElementById('filtroDesde').value = drpFrom;
+  document.getElementById('filtroHasta').value = drpTo;
+  const label = drpFrom && drpTo
+    ? (drpFrom === drpTo ? drpFmt(drpFrom) : drpFmt(drpFrom) + ' → ' + drpFmt(drpTo))
+    : 'Seleccionar fechas';
+  document.getElementById('drpLabel').textContent = label;
+  drpClose();
+  applyFilters();
+}
+function drpCancel() {
+  drpFrom = document.getElementById('filtroDesde').value || '';
+  drpTo   = document.getElementById('filtroHasta').value || '';
+  drpClose();
+}
+function drpFmt(iso) {
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function drpPreset(p) {
+  const hoy = new Date(TODAY_ISO + 'T12:00:00');
+  const iso = d => d.toISOString().slice(0,10);
+  const addD = (d,n) => { const r=new Date(d); r.setDate(r.getDate()+n); return r; };
+  let f, t = TODAY_ISO;
+  if      (p==='hoy')     { f = TODAY_ISO; }
+  else if (p==='ayer')    { f = t = iso(addD(hoy,-1)); }
+  else if (p==='7d')      { f = iso(addD(hoy,-6)); }
+  else if (p==='15d')     { f = iso(addD(hoy,-14)); }
+  else if (p==='30d')     { f = iso(addD(hoy,-29)); }
+  else if (p==='mes_act') { f = `${TODAY_ISO.slice(0,7)}-01`; }
+  else if (p==='mes_ant') { const d=new Date(hoy.getFullYear(),hoy.getMonth()-1,1);
+                            f=iso(d); t=iso(new Date(hoy.getFullYear(),hoy.getMonth(),0)); }
+  else if (p==='todo')    { f=''; t=''; }
+  else return;
+  drpFrom=f; drpTo=t; drpSelecting=false;
+  document.querySelectorAll('.drp-pre').forEach(b=>b.classList.toggle('active',b.dataset.p===p));
+  drpApply();
+}
+function drpRender() {
+  document.getElementById('drpCal0').innerHTML = drpBuildMonth(drpViewYear, drpViewMonth);
+}
+function drpBuildMonth(y, mo) {
+  const first = new Date(y, mo, 1);
+  let dow = first.getDay(); dow = dow===0 ? 6 : dow-1;
+  const days = new Date(y, mo+1, 0).getDate();
+  let h = `<div class="drp-mhdr">
+    <button style="background:none;border:none;cursor:pointer;font-size:.9rem;color:var(--navy)" onclick="drpNav(-1)">◀</button>
+    <span>${DRP_MESES[mo]} ${y}</span>
+    <button style="background:none;border:none;cursor:pointer;font-size:.9rem;color:var(--navy)" onclick="drpNav(1)">▶</button>
+  </div><div class="drp-grid">`;
+  DRP_DIAS.forEach(d => h += `<div class="drp-dh">${d}</div>`);
+  for (let i=0; i<dow; i++) h += `<div></div>`;
+  for (let d=1; d<=days; d++) {
+    const iso = `${y}-${String(mo+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    let cls = 'drp-day';
+    if (iso === TODAY_ISO) cls += ' today';
+    if (iso===drpFrom||iso===drpTo) cls += ' sel';
+    else if (drpFrom && drpTo && iso>drpFrom && iso<drpTo) cls += ' in-range';
+    h += `<div class="${cls}" onclick="drpClick('${iso}')">${d}</div>`;
+  }
+  return h + '</div>';
+}
+function drpNav(dir) {
+  drpViewMonth += dir;
+  if (drpViewMonth > 11) { drpViewMonth=0; drpViewYear++; }
+  if (drpViewMonth < 0)  { drpViewMonth=11; drpViewYear--; }
+  drpRender();
+}
+function drpClick(iso) {
+  if (!drpSelecting || iso < drpFrom) {
+    drpFrom=iso; drpTo=iso; drpSelecting=true;
+    document.querySelectorAll('.drp-pre').forEach(b=>b.classList.toggle('active',b.dataset.p==='custom'));
+    drpRender();
+  } else { drpTo=iso; drpSelecting=false; drpRender(); }
+}
+// Cerrar al hacer click fuera
+document.addEventListener('click', e => {
+  const w = document.getElementById('drpWrap');
+  if (w && !w.contains(e.target)) drpClose();
+});
+
 // ── RESET ─────────────────────────────────────────────────────────────────────
 function resetFilters() {
-  ['searchInput','rubroInput','familiaInput','marcaInput'].forEach(id => document.getElementById(id).value = '');
+  ['searchInput','rubroInput','familiaInput','marcaInput','filtroDesde','filtroHasta']
+    .forEach(id => document.getElementById(id).value = '');
+  document.getElementById('drpLabel').textContent = 'Seleccionar fechas';
   ['rubro','familia','marca'].forEach(acClose);
   selectedBranches = new Set(ALL_BRANCHES);
   sortCol = null; sortDir = 1;
